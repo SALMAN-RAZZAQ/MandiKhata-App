@@ -5,28 +5,63 @@ function Dashboard() {
   const [categories, setCategories] = useState([]);
   const [selectedSection, setSelectedSection] = useState('All');
   
-  // NAYA: Date filter ke liye state variables
+  // Date filter ke liye state variables
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
+  // ✅ NAYA: Token nikalne ka tareeqa
+  const getToken = () => localStorage.getItem('token');
+
   const fetchLedger = () => {
-    fetch('http://localhost:5000/api/parcha/all')
+    fetch('http://localhost:5000/api/parcha/all', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'auth-token': getToken() // ✅ Chabi yahan add ki
+      }
+    })
       .then(res => res.json())
-      .then(data => setLedger(data));
+      .then(data => {
+        // ✅ NAYA: Check karein ke list hi aayi hai na, taake crash na ho
+        if (Array.isArray(data)) {
+          setLedger(data);
+        } else {
+          setLedger([]);
+        }
+      })
+      .catch(err => setLedger([]));
   };
 
   useEffect(() => {
     fetchLedger();
-    fetch('http://localhost:5000/api/parcha/khatagroup/all')
+    fetch('http://localhost:5000/api/parcha/khatagroup/all', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'auth-token': getToken() // ✅ Chabi yahan bhi add ki
+      }
+    })
       .then(res => res.json())
-      .then(data => setCategories(data));
+      .then(data => {
+        if (Array.isArray(data)) {
+          setCategories(data);
+        } else {
+          setCategories([]);
+        }
+      })
+      .catch(err => setCategories([]));
   }, []);
 
   const handleDelete = async (id) => {
     const isConfirm = window.confirm("⚠️ Kya aap waqai yeh Parchi delete karna chahte hain? (Party ka balance khud theek ho jayega)");
     if (isConfirm) {
       try {
-        const response = await fetch(`http://localhost:5000/api/parcha/delete/${id}`, { method: 'DELETE' });
+        const response = await fetch(`http://localhost:5000/api/parcha/delete/${id}`, { 
+          method: 'DELETE',
+          headers: {
+            'auth-token': getToken() // ✅ Delete karte waqt bhi chabi zaroori hai
+          }
+        });
         if (response.ok) {
           alert("✅ Parchi kamyabi se delete ho gayi!");
           fetchLedger(); 
@@ -37,7 +72,7 @@ function Dashboard() {
     }
   };
 
-  // NAYA: Khata Section aur Date dono se filter karne ki Logic
+  // Khata Section aur Date dono se filter karne ki Logic
   const filteredLedger = ledger.filter(entry => {
     // 1. Check karein ke Khata Section match hota hai ya nahi
     const matchSection = selectedSection === 'All' ? true : entry.khataCategory === selectedSection;
@@ -66,7 +101,7 @@ function Dashboard() {
     <div style={{ padding: '30px', fontFamily: 'Arial, sans-serif' }}>
       <h2>📊 Organized Roznamcha (روزنامچہ)</h2>
 
-      {/* NAYA: DATE FILTER BAR */}
+      {/* DATE FILTER BAR */}
       <div style={{ display: 'flex', gap: '20px', backgroundColor: '#e8f4fd', padding: '15px', borderRadius: '8px', border: '1px solid #b3d7ff', marginBottom: '20px', alignItems: 'center' }}>
         <h4 style={{ margin: 0, color: '#000080' }}>📅 Tareekh Se Dhoondein:</h4>
         
@@ -143,7 +178,7 @@ function Dashboard() {
                     </span>
                   </td>
                   <td style={{ ...tdStyle, color: item.transactionType === 'Adaigi' ? '#dc3545' : '#198754', fontWeight: 'bold' }}>
-                    Rs. {item.netAmount.toLocaleString()}
+                    Rs. {item.netAmount ? item.netAmount.toLocaleString() : 0}
                   </td>
                   <td style={tdStyle}>
                     <button 

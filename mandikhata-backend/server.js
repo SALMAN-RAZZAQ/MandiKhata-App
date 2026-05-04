@@ -1,32 +1,37 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const rokarRoutes = require('./routes/rokarRoutes');
 require('dotenv').config();
 
 const app = express();
 
-app.use(cors()); 
-app.use(express.json()); 
-app.use('/api/rokar', rokarRoutes);
-app.use('/api/auth', require('./routes/authRoutes'));
+// ✅ CORS Settings
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'auth-token'] // ✅ auth-token add kiya
+};
+app.use(cors(corsOptions));
+app.use(express.json());
 
-// ---- IMPORT YOUR NEW DOORS HERE ----
-const parchaRoutes = require('./routes/parchaRoutes');
-app.use('/api/parcha', parchaRoutes);
-// ------------------------------------
+// ✅ Routes — sab ek jagah saaf tarike se
+app.use('/api/auth',   require('./routes/authRoutes'));
+app.use('/api/parcha', require('./routes/parchaRoutes'));
+app.use('/api/rokar',  require('./routes/rokarRoutes'));
 
-const mongoURI = process.env.MONGO_URI;
+// ✅ MongoDB Connection
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('✅ MongoDB Connected!'))
+  .catch((err) => console.log('❌ Connection Error:', err));
 
-mongoose.connect(mongoURI, { family: 4 })
-  .then(() => console.log('✅ Ground Reality: Connected to MongoDB ATLAS (Cloud Server)!'))
-  .catch((err) => console.log('❌ Cloud Connection Error:', err));
-
+// ✅ Default Route
 app.get('/', (req, res) => {
-  res.send('MandiKhata Cloud API is running securely.');
+  res.send('MandiKhata API is running securely.');
 });
 
-const PORT = 5000;
+// ✅ PORT
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Master Server is running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });

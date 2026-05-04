@@ -1,8 +1,7 @@
 const jwt = require('jsonwebtoken');
 
 // Wahi same secret key jo authRoutes.js mein rakhi thi
-const JWT_SECRET = 'MandiKhata123!@#SuperSecretKey'; 
-
+const JWT_SECRET = process.env.JWT_SECRET;
 const fetchUser = (req, res, next) => {
   // 1. Guard check karega ke request ke "header" mein 'auth-token' (chabi) hai ya nahi?
   const token = req.header('auth-token');

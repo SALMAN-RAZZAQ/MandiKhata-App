@@ -1,3 +1,9 @@
+/* =========================================
+   SAB SE PEHLE IMPORT AAYEGA (VIP RULE)
+   ========================================= */
+/* Urdu Font (Noto Nastaliq) */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap');
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -13,11 +19,8 @@ code {
 }
 
 /* =========================================
-   YAHAN SE NAYA PRINT AUR URDU KA CODE HAI 
+   YAHAN SE NAYA PRINT AUR URDU KA BAAQI CODE HAI 
    ========================================= */
-
-/* Urdu Font (Noto Nastaliq) */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap');
 
 .urdu-text {
   font-family: 'Noto Nastaliq Urdu', serif;
