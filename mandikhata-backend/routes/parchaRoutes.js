@@ -5,27 +5,21 @@ const Transaction = require('../models/Transaction');
 const Party = require('../models/Party');
 const KhataGroup = require('../models/KhataGroup');
 const User = require('../models/User');
+const Parcha = require('../models/Parcha'); // ✅ NAYA: Parcha model import kiya
 const fetchUser = require('../middleware/fetchUser');
-const adminOnly = require('../middleware/adminOnly'); // ✅ Admin guard import
+const adminOnly = require('../middleware/adminOnly');
 
-// 1. ADD KHATA — ✅ Admin only (Security waise hi hai)
+// 1. ADD KHATA — ✅ Admin only
 router.post('/khatagroup/add', fetchUser, adminOnly, async (req, res) => {
   try {
     const { name } = req.body;
-    
-    // Agar naam khali aaye toh backend yahan rok lega
-    if (!name) {
-      return res.status(400).json({ error: 'Khata ka naam likhna zaroori hai!' });
-    }
+    if (!name) return res.status(400).json({ error: 'Khata ka naam likhna zaroori hai!' });
 
     const newGroup = new KhataGroup({ name });
     await newGroup.save();
     
     res.status(201).json({ message: 'Naya Khata Section ban gaya!', data: newGroup });
   } catch (error) {
-    console.log("Database Error in Add Khata:", error); 
-    
-    // Asal Haqeeqat: Agar waqai duplicate entry ho toh error code 11000 aata hai
     if (error.code === 11000) {
       res.status(400).json({ error: 'Yeh Khata pehle se mojood hai.' });
     } else {
@@ -34,7 +28,7 @@ router.post('/khatagroup/add', fetchUser, adminOnly, async (req, res) => {
   }
 });
 
-// 2. GET ALL KHATA — ✅ OPEN (login page ko zaroorat hai)
+// 2. GET ALL KHATA — ✅ OPEN
 router.get('/khatagroup/all', async (req, res) => {
   try {
     const groups = await KhataGroup.find();
@@ -54,7 +48,7 @@ router.delete('/khatagroup/delete/:id', fetchUser, adminOnly, async (req, res) =
   }
 });
 
-// 4. PARCHI SAVE — ✅ Munshi bhi kar sakta hai
+// 4. PARCHI SAVE — ✅ Munshi bhi kar sakta hai (🔥 NAYA ERP FLOW)
 router.post('/add', fetchUser, async (req, res) => {
   try {
     const { 
@@ -63,43 +57,41 @@ router.post('/add', fetchUser, async (req, res) => {
       commission, mazdoori, dami, marketFee, details
     } = req.body;
 
-    if (!transactionType) return res.status(400).json({ error: 'Parchi ki Qisam zaroori hai!' });
-    if (!khataCategory) return res.status(400).json({ error: 'Khata Account zaroori hai!' });
-    if (!farmerName) return res.status(400).json({ error: 'Party Name zaroori hai!' });
-
-    let party = await Party.findOne({ name: farmerName });
-
-    if (!party) {
-      party = new Party({
-        name: farmerName,
-        partyType: khataCategory, 
-        currentBalance: 0
-      });
+    if (!transactionType || !khataCategory || !farmerName) {
+        return res.status(400).json({ error: 'Zaroori maloomat missing hain!' });
     }
 
+    // 1. Party (Khata) dhoondein ya naya banayen
+    let party = await Party.findOne({ name: farmerName });
+    if (!party) {
+      party = new Party({ name: farmerName, partyType: khataCategory, currentBalance: 0 });
+    }
+
+    // Party ka balance update karein
     if (transactionType === 'Adaigi') {
       party.currentBalance -= Number(totalAmount);
     } else {
       party.currentBalance += Number(totalAmount);
     }
+    party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam';
     await party.save(); 
 
-    // ✅ Sequential Receipt Number
-    const lastTransaction = await Transaction.findOne().sort({ _id: -1 });
+    // 2. Sequential Parcha Number (Parcha table se)
+    const lastParcha = await Parcha.findOne().sort({ _id: -1 });
     let nextNumber = 1001;
-    if (lastTransaction && lastTransaction.receiptNo) {
-      const parts = lastTransaction.receiptNo.split('-');
-      if (parts.length === 2) {
-        const lastNum = parseInt(parts[1]);
-        if (!isNaN(lastNum)) nextNumber = lastNum + 1;
+    if (lastParcha && lastParcha.parchaNo) {
+      const parts = lastParcha.parchaNo.split('-');
+      if (parts.length === 2 && !isNaN(parseInt(parts[1]))) {
+        nextNumber = parseInt(parts[1]) + 1;
       }
     }
-    const finalReceiptNo = 'RCP-' + nextNumber;
+    const finalParchaNo = 'PRC-' + nextNumber;
 
-    const newTransaction = new Transaction({
-      receiptNo: finalReceiptNo,
+    // 3. Parcha Table mein Fasal ka data save karein
+    const newParcha = new Parcha({
+      parchaNo: finalParchaNo,
       transactionType: transactionType,
-      khataCategory: khataCategory, 
+      khataCategory: khataCategory, // 🔥 YEH LINE ADD HO GAYI HAI (Bug 9 Fix)
       partyId: party._id, 
       partyName: party.name,
       cropType: cropType || 'N/A',
@@ -113,16 +105,32 @@ router.post('/add', fetchUser, async (req, res) => {
       details: details || '',
       netAmount: Number(totalAmount) || 0
     });
+    await newParcha.save(); 
 
-    await newTransaction.save(); 
-    res.status(201).json({ message: 'Parchi Save Ho Gayi!', data: newTransaction });
+    // 4. Transaction (Ledger) Table mein automatically entry daalein
+    const newTransaction = new Transaction({
+        voucherNo: finalParchaNo, // Parcha number as reference
+        date: Date.now(),
+        transactionType: transactionType,
+        khataCategory: khataCategory,
+        partyId: party._id,
+        partyName: party.name,
+        // Adaigi hai toh Naam (Debit), warna fasal aayi hai toh Jama (Credit)
+        debit: transactionType === 'Adaigi' ? Number(totalAmount) : 0,
+        credit: transactionType !== 'Adaigi' ? Number(totalAmount) : 0,
+        details: `Bill No: ${finalParchaNo} - ${cropType} (${weight} kg)`
+    });
+    await newTransaction.save();
+
+    res.status(201).json({ message: 'Parchi aur Khata dono update ho gaye!', data: newParcha });
     
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'System parchi save nahi kar saka.' });
   }
 });
 
-// 5. ROZNAMCHA ALL — ✅ Munshi bhi dekh sakta hai
+// 5. ROZNAMCHA ALL (Ab Parcha table se aayega)
 router.get('/all', fetchUser, async (req, res) => {
   try {
     const { from, to, khataCategory } = req.query;
@@ -134,64 +142,69 @@ router.get('/all', fetchUser, async (req, res) => {
         $lte: new Date(new Date(to).setHours(23, 59, 59, 999)) 
       };
     }
-
-    if (khataCategory && khataCategory !== 'all') {
-      filter.khataCategory = khataCategory;
+    // ✅ BUG 7 FIX: Filter uncomment kar diya taake kisan/kharidar alag alag show ho sakein
+    if (khataCategory && khataCategory !== 'all') { 
+        filter.khataCategory = khataCategory; 
     }
 
-    const allTransactions = await Transaction.find(filter).sort({ date: -1 });
-    res.status(200).json(allTransactions);
+    const allParchas = await Parcha.find(filter).sort({ date: -1 });
+    res.status(200).json(allParchas);
   } catch (error) {
     res.status(500).json({ error: 'Roznamcha load nahi ho saka.' });
   }
 });
 
-// 6. PARCHI DELETE — ✅ Admin only
+// 6. PARCHI DELETE (Parcha aur Transaction dono delete karega)
 router.delete('/delete/:id', fetchUser, adminOnly, async (req, res) => {
   try {
-    const transaction = await Transaction.findById(req.params.id);
-    if (!transaction) return res.status(404).json({ error: 'Parchi nahi mili' });
+    const parcha = await Parcha.findById(req.params.id);
+    if (!parcha) return res.status(404).json({ error: 'Parchi nahi mili' });
 
-    if (transaction.partyId) {
-      let party = await Party.findById(transaction.partyId);
+    // 1. Party ka balance reverse karein
+    if (parcha.partyId) {
+      let party = await Party.findById(parcha.partyId);
       if (party) {
-        if (transaction.transactionType === 'Adaigi') {
-          party.currentBalance += (transaction.netAmount || 0); 
+        if (parcha.transactionType === 'Adaigi') {
+          party.currentBalance += (parcha.netAmount || 0); 
         } else {
-          party.currentBalance -= (transaction.netAmount || 0); 
+          party.currentBalance -= (parcha.netAmount || 0); 
         }
+        party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam';
         await party.save();
       }
     }
 
-    await Transaction.findByIdAndDelete(req.params.id);
-    res.status(200).json({ message: 'Parchi Delete aur Khata Reverse ho gaya!' });
+    // 2. Transaction (Ledger) se bhi is parchy ki entry urra dein
+    await Transaction.findOneAndDelete({ voucherNo: parcha.parchaNo });
 
+    // 3. Aakhir mein Parcha delete karein
+    await Parcha.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({ message: 'Parchi Delete aur Khata Reverse ho gaya!' });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Delete failed.' });
   }
 });
 
-// 7. PAKKA KHATA — ✅ Munshi bhi dekh sakta hai
+// 7. PAKKA KHATA
 router.get('/party/:name', fetchUser, async (req, res) => {
   try {
     const party = await Party.findOne({ 
       name: { $regex: new RegExp('^' + req.params.name + '$', 'i') } 
     });
-    if (!party) {
-      return res.status(404).json({ error: 'Is naam ki koi party nahi mili!' });
-    }
+    if (!party) return res.status(404).json({ error: 'Is naam ki koi party nahi mili!' });
     res.status(200).json(party);
   } catch (error) {
     res.status(500).json({ error: 'Khata load nahi ho saka.' });
   }
 });
 
-// 8. SAARI PARTIES KI LIST — ✅ Munshi bhi dekh sakta hai
+// 8. SAARI PARTIES KI LIST
 router.get('/parties/all', fetchUser, async (req, res) => {
   try {
     const parties = await Party.find()
-      .select('name partyType currentBalance createdAt')
+      .select('name partyType currentBalance balanceType createdAt')
       .sort({ name: 1 });
     res.status(200).json(parties);
   } catch (error) {
@@ -199,7 +212,7 @@ router.get('/parties/all', fetchUser, async (req, res) => {
   }
 });
 
-// 9. PASSWORD CHANGE — ✅ Admin only
+// 9. PASSWORD CHANGE
 router.post('/update-password', fetchUser, adminOnly, async (req, res) => {
   try {
     const { role, newPassword } = req.body;

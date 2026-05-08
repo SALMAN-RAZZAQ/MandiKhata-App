@@ -1,21 +1,19 @@
 const mongoose = require('mongoose');
 
-const rokarTransactionSchema = new mongoose.Schema({
-  referenceId: { type: String, required: true }, // <-- NAYA: Hawala Number
-  partyName: { type: String },                   // <-- NAYA: Party ka naam
-  description: { type: String, required: true },
-  amount: { type: Number, required: true },
-  type: { type: String, enum: ['Jama', 'Naam'], required: true },
-  category: { type: String, default: 'General' },
-  time: { type: String, default: () => new Date().toLocaleTimeString('en-GB') }
-});
-
 const rokarSchema = new mongoose.Schema({
-  date: { type: String, required: true, unique: true },
+  date: { type: String, required: true, unique: true }, // Format: 'dd-mm-yy'
+  
+  // Galla khulte waqt kitne paise the
   openingBalance: { type: Number, required: true, default: 0 },
-  transactions: [rokarTransactionSchema],
+  
+  // Galla band hote waqt kitne paise hain
   closingBalance: { type: Number, required: true, default: 0 },
+  
+  // Kya aaj ki rokar band (lock) ho chuki hai?
   isClosed: { type: Boolean, default: false }
+  
+  // 🔥 FIX: 'transactions' array yahan se remove kar diya gaya hai taake double entry na ho.
+  
 }, { timestamps: true });
 
 module.exports = mongoose.model('Rokar', rokarSchema);

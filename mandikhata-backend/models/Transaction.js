@@ -1,29 +1,28 @@
-const mongoose = require('mongoose'); // YEH LINE MISSING THI
+const mongoose = require('mongoose');
 
 const transactionSchema = new mongoose.Schema({
-  receiptNo: { type: String, required: true }, 
+  voucherNo: { type: String, required: true }, // Jaise CR-01104 (Receipt) ya P-102 (Parcha)
   date: { type: Date, default: Date.now },
   
+  // Kis kism ki entry hai? (Cash Receipt, Cash Payment, ya Kachi Arhat)
   transactionType: { type: String, required: true }, 
   
-  // NAYA: Parchi kis Khate mein jayegi
+  // Parchi kis Khate mein jayegi
   khataCategory: { type: String, default: 'Kisan' }, 
   
-  partyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Party', required: true },
+  partyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Party' },
   partyName: { type: String, required: true }, 
   
-  cropType: { type: String },
-  weight: { type: Number, default: 0 },
-  rate: { type: Number, default: 0 },
+  // YEH HAIN ASAL LEDGER KI JAAN (Debit / Credit)
+  debit: { type: Number, default: 0 },  // Naam (Aapne party se lene hain)
+  credit: { type: Number, default: 0 }, // Jama (Party ne aapse lene hain / jama karwaye)
   
-  grossAmount: { type: Number, default: 0 },
-  commission: { type: Number, default: 0 },
-  mazdoori: { type: Number, default: 0 },
-  dami: { type: Number, default: 0 },
-  marketFee: { type: Number, default: 0 },
+  // Details mein likhenge "Cash received" ya "Bill #102 ki amount"
+  details: { type: String },
   
-  netAmount: { type: Number, required: true }, 
-  details: { type: String } 
-});
+  // Agar yeh entry kisi Parcha/Bill ke banne se aayi hai, toh uska reference
+  parchaId: { type: mongoose.Schema.Types.ObjectId, ref: 'Parcha', default: null }
+  
+}, { timestamps: true }); // ✅ FIX: Timestamps ka bracket fields ke bahar aata hai
 
 module.exports = mongoose.model('Transaction', transactionSchema);
