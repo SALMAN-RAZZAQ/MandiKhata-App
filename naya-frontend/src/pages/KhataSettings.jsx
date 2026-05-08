@@ -9,8 +9,13 @@ function KhataSettings() {
   const [passRole, setPassRole] = useState('Admin'); 
   const userRole = localStorage.getItem('role');
 
-  // ✅ NAYA: Token (Chabi) nikalne ka asaan tareeqa
   const getToken = () => localStorage.getItem('token');
+
+  const handleSessionExpire = () => {
+    alert("Aapka session expire ho gaya hai. Dobara login karein!");
+    localStorage.clear();
+    window.location.href = '/login';
+  };
 
   useEffect(() => {
     fetchGroups();
@@ -18,7 +23,14 @@ function KhataSettings() {
 
   const fetchGroups = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/parcha/khatagroup/all');
+      // ✅ FIX: Ab chabi ke sath request jayegi
+      const response = await fetch('/api/parcha/khatagroup/all', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'auth-token': getToken()
+        }
+      });
       const data = await response.json();
       setGroups(data);
     } catch (error) {
@@ -30,23 +42,24 @@ function KhataSettings() {
     e.preventDefault();
     setStatus('Save ho raha hai...');
     try {
-      const response = await fetch('http://localhost:5000/api/parcha/khatagroup/add', {
+      const response = await fetch('/api/parcha/khatagroup/add', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'auth-token': getToken() // ✅ Asal Masla: Yahan Chabi lagani zaroori thi!
+          'auth-token': getToken() 
         },
         body: JSON.stringify({ name: newName })
       });
 
-      const data = await response.json(); // Backend se asal message mangwaya
+      if (response.status === 401) return handleSessionExpire();
+
+      const data = await response.json(); 
 
       if (response.ok) {
         setStatus('✅ Naya Khata Section ban gaya!');
         setNewName('');
         fetchGroups(); 
       } else {
-        // ✅ Ab jhoota message nahi, backend ka ASAL error show hoga
         setStatus(`❌ Error: ${data.error || 'Server mein masla hai'}`);
       }
     } catch (error) {
@@ -58,12 +71,15 @@ function KhataSettings() {
     const isConfirm = window.confirm("⚠️ Kya aap waqai yeh Khata hamesha ke liye Delete karna chahte hain?");
     if (isConfirm) {
       try {
-        const response = await fetch(`http://localhost:5000/api/parcha/khatagroup/delete/${id}`, { 
+        const response = await fetch(`/api/parcha/khatagroup/delete/${id}`, { 
           method: 'DELETE',
           headers: {
-            'auth-token': getToken() // ✅ Delete ke liye bhi chabi chahiye
+            'auth-token': getToken() 
           }
         });
+        
+        if (response.status === 401) return handleSessionExpire();
+
         if (response.ok) {
           alert("✅ Khata Delete Ho Gaya!");
           fetchGroups(); 
@@ -80,16 +96,18 @@ function KhataSettings() {
       return;
     }
     try {
-      const res = await fetch('http://localhost:5000/api/parcha/update-password', {
+      const response = await fetch('/api/parcha/update-password', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'auth-token': getToken() // ✅ Password change ke liye bhi chabi
+          'auth-token': getToken() 
         },
         body: JSON.stringify({ role: passRole, newPassword: newPass })
       });
       
-      if(res.ok) {
+      if (response.status === 401) return handleSessionExpire();
+
+      if(response.ok) {
         alert(`✅ ${passRole} ka Password Kamyabi se Badal Gaya!`);
         setNewPass(''); 
       } else {

@@ -1,47 +1,67 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 function Dashboard() {
   const [ledger, setLedger] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [selectedSection, setSelectedSection] = useState('All');
+  
+  // ✅ FIX 1: useState mein initial value 'Kisan' kar di gayi hai
+  const [selectedSection, setSelectedSection] = useState('Kisan'); 
   
   // Date filter ke liye state variables
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-
-  // ✅ NAYA: Token nikalne ka tareeqa
+  
+  const navigate = useNavigate();
   const getToken = () => localStorage.getItem('token');
+  const userRole = localStorage.getItem('role'); 
+
+  const handleSessionExpire = () => {
+    alert("Aapka session expire ho gaya hai. Dobara login karein!");
+    localStorage.clear();
+    navigate('/login');
+  };
 
   const fetchLedger = () => {
-    fetch('http://localhost:5000/api/parcha/all', {
+    fetch('/api/parcha/all', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'auth-token': getToken() // ✅ Chabi yahan add ki
+        'auth-token': getToken() 
       }
     })
-      .then(res => res.json())
+      .then(res => {
+        if (res.status === 401) throw new Error('Unauthorized');
+        return res.json();
+      })
       .then(data => {
-        // ✅ NAYA: Check karein ke list hi aayi hai na, taake crash na ho
         if (Array.isArray(data)) {
           setLedger(data);
         } else {
           setLedger([]);
         }
       })
-      .catch(err => setLedger([]));
+      .catch(err => {
+        if (err.message === 'Unauthorized') handleSessionExpire();
+        else setLedger([]);
+      });
   };
 
   useEffect(() => {
     fetchLedger();
-    fetch('http://localhost:5000/api/parcha/khatagroup/all', {
+    
+    // ✅ FIX 2: Tool ki warning ke mutabiq isay wapis SECURE kar diya gaya hai (Chabi add ki)
+    fetch('/api/parcha/khatagroup/all', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'auth-token': getToken() // ✅ Chabi yahan bhi add ki
+        'auth-token': getToken()
       }
     })
-      .then(res => res.json())
+      .then(res => {
+        if (res.status === 401) throw new Error('Unauthorized');
+        return res.json();
+      })
       .then(data => {
         if (Array.isArray(data)) {
           setCategories(data);
@@ -49,19 +69,25 @@ function Dashboard() {
           setCategories([]);
         }
       })
-      .catch(err => setCategories([]));
+      .catch(err => {
+        if (err.message === 'Unauthorized') handleSessionExpire();
+        else setCategories([]);
+      });
   }, []);
 
   const handleDelete = async (id) => {
     const isConfirm = window.confirm("⚠️ Kya aap waqai yeh Parchi delete karna chahte hain? (Party ka balance khud theek ho jayega)");
     if (isConfirm) {
       try {
-        const response = await fetch(`http://localhost:5000/api/parcha/delete/${id}`, { 
+        const response = await fetch(`/api/parcha/delete/${id}`, { 
           method: 'DELETE',
           headers: {
-            'auth-token': getToken() // ✅ Delete karte waqt bhi chabi zaroori hai
+            'auth-token': getToken() 
           }
         });
+        
+        if (response.status === 401) return handleSessionExpire();
+
         if (response.ok) {
           alert("✅ Parchi kamyabi se delete ho gayi!");
           fetchLedger(); 
@@ -74,13 +100,11 @@ function Dashboard() {
 
   // Khata Section aur Date dono se filter karne ki Logic
   const filteredLedger = ledger.filter(entry => {
-    // 1. Check karein ke Khata Section match hota hai ya nahi
     const matchSection = selectedSection === 'All' ? true : entry.khataCategory === selectedSection;
     
-    // 2. Check karein ke Date match hoti hai ya nahi
     let matchDate = true;
     const entryDate = new Date(entry.date);
-    entryDate.setHours(0, 0, 0, 0); // Time ko ignore karne ke liye
+    entryDate.setHours(0, 0, 0, 0); 
 
     if (fromDate) {
       const fDate = new Date(fromDate);
@@ -90,7 +114,7 @@ function Dashboard() {
     
     if (toDate) {
       const tDate = new Date(toDate);
-      tDate.setHours(23, 59, 59, 999); // Us din ke aakhir tak
+      tDate.setHours(23, 59, 59, 999); 
       if (entryDate > tDate) matchDate = false;
     }
 
@@ -136,8 +160,8 @@ function Dashboard() {
         <button onClick={() => setSelectedSection('All')} style={tabStyle(selectedSection === 'All')}>
           Sab Mix (All)
         </button>
-        <button onClick={() => setSelectedSection('Kisan / Beopari (Default)')} style={tabStyle(selectedSection === 'Kisan / Beopari (Default)')}>
-          🌾 Kisan / Beopari
+        <button onClick={() => setSelectedSection('Kisan')} style={tabStyle(selectedSection === 'Kisan')}>
+          🌾 Kisan
         </button>
         {categories.map(cat => (
           <button key={cat._id} onClick={() => setSelectedSection(cat.name)} style={tabStyle(selectedSection === cat.name)}>
@@ -156,13 +180,13 @@ function Dashboard() {
               <th style={thStyle}>Khata Section</th>
               <th style={thStyle}>Type (Qisam)</th>
               <th style={thStyle}>Amount</th>
-              <th style={thStyle}>Action</th>
+              {userRole === 'Admin' && <th style={thStyle}>Action</th>}
             </tr>
           </thead>
           <tbody>
             {filteredLedger.length === 0 ? (
               <tr>
-                <td colSpan="6" style={{ padding: '20px', textAlign: 'center', fontWeight: 'bold' }}>
+                <td colSpan={userRole === 'Admin' ? "6" : "5"} style={{ padding: '20px', textAlign: 'center', fontWeight: 'bold' }}>
                   Is filter mein abhi tak koi entry nahi mili.
                 </td>
               </tr>
@@ -180,13 +204,15 @@ function Dashboard() {
                   <td style={{ ...tdStyle, color: item.transactionType === 'Adaigi' ? '#dc3545' : '#198754', fontWeight: 'bold' }}>
                     Rs. {item.netAmount ? item.netAmount.toLocaleString() : 0}
                   </td>
-                  <td style={tdStyle}>
-                    <button 
-                      onClick={() => handleDelete(item._id)} 
-                      style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                      🗑️ Delete
-                    </button>
-                  </td>
+                  {userRole === 'Admin' && (
+                    <td style={tdStyle}>
+                      <button 
+                        onClick={() => handleDelete(item._id)} 
+                        style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                        🗑️ Delete
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}

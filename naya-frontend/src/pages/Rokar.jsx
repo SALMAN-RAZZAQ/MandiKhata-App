@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 function Rokar() {
-  const [rokar, setRokar] = useState(null);
+  const [data, setData] = useState(null); 
   const [loading, setLoading] = useState(true);
   
   // Nayi Entry ke liye states
@@ -13,21 +13,22 @@ function Rokar() {
   const [category, setCategory] = useState('General');
   const [saving, setSaving] = useState(false);
 
+  // ✅ NAYA: User ka role check karne ke liye taake Delete button sirf Admin ko dikhe
+  const userRole = localStorage.getItem('role');
+
   // Rokar Load Karna
   const fetchRokar = async () => {
     try {
-      // 🔑 NAYA: Pocket se chabi nikali
       const token = localStorage.getItem('token');
 
-      const response = await fetch('http://localhost:5000/api/rokar/today', {
+      const response = await fetch('/api/rokar/today', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'auth-token': token // 🔑 Guard ko chabi dikhayi
+          'auth-token': token 
         }
       });
 
-      // Agar chabi expire ho gayi (401 Unauthorized)
       if (response.status === 401) {
         alert("Aapka session expire ho gaya hai. Dobara login karein!");
         localStorage.removeItem('token');
@@ -37,8 +38,8 @@ function Rokar() {
       }
 
       if (response.ok) {
-        const data = await response.json();
-        setRokar(data);
+        const result = await response.json();
+        setData(result); 
       } else {
         console.error("Backend ne data nahi bheja");
       }
@@ -59,15 +60,14 @@ function Rokar() {
     if (!amount || !description) return alert('Bhai jan, Raqam aur Tafseel dono likhna zaroori hain!');
     
     setSaving(true);
-    // 🔑 NAYA: Nayi entry save karne ke liye bhi chabi chahiye
     const token = localStorage.getItem('token'); 
     
     try {
-      const response = await fetch('http://localhost:5000/api/rokar/add-entry', {
+      const response = await fetch('/api/rokar/add-entry', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'auth-token': token // 🔑 Guard ko yahan bhi chabi dikhayi
+          'auth-token': token 
         },
         body: JSON.stringify({
           partyName,
@@ -78,7 +78,6 @@ function Rokar() {
         })
       });
 
-      // Agar chabi expire ho gayi (401 Unauthorized)
       if (response.status === 401) {
         alert("Aapka session expire ho gaya hai. Dobara login karein!");
         localStorage.removeItem('token');
@@ -88,14 +87,12 @@ function Rokar() {
       }
 
       if (response.ok) {
-        // Form clear karein
         setPartyName(''); 
         setAmount('');
         setDescription('');
         setCategory('General');
         setEntryForm(null);
-        // Data refresh karein
-        fetchRokar();
+        fetchRokar(); // Data wapis taaza karo
       } else {
         alert("Entry save karne mein masla aagaya.");
       }
@@ -106,17 +103,55 @@ function Rokar() {
     }
   };
 
+  // ✅ NAYA: Entry Delete karne ka function (Backend API call karega)
+  const handleDeleteEntry = async (transactionId) => {
+    const isConfirm = window.confirm("⚠️ Kya aap waqai yeh entry delete karna chahte hain? (Galla aur Party ka balance automatically reverse ho jayega)");
+    
+    if (isConfirm) {
+      try {
+        const token = localStorage.getItem('token');
+        // Rokar ID aur Transaction ID dono bhejni hain
+        const response = await fetch(`/api/rokar/delete-entry/${data.rokar._id}/${transactionId}`, {
+          method: 'DELETE',
+          headers: {
+            'auth-token': token
+          }
+        });
+
+        if (response.status === 401) {
+          alert("Aapka session expire ho gaya hai. Dobara login karein!");
+          localStorage.removeItem('token');
+          localStorage.removeItem('role');
+          window.location.href = '/login';
+          return;
+        }
+
+        if (response.ok) {
+          alert("✅ Entry kamyabi se delete ho gayi aur balance theek ho gaya!");
+          fetchRokar(); // Data refresh karo taake naya galla nazar aaye
+        } else {
+          const errorData = await response.json();
+          alert(`❌ Masla aaya: ${errorData.error}`);
+        }
+      } catch (error) {
+        alert("❌ Network Error!");
+      }
+    }
+  };
+
   if (loading) {
     return <h2 className="text-center mt-5">⏳ آج کی روکڑ کھل رہی ہے... (Loading)</h2>;
   }
 
-  if (!rokar) {
+  if (!data || !data.rokar) {
     return <h2 className="text-center mt-5 text-danger">❌ روکڑ کا نظام چل نہیں رہا۔ (Backend Error)</h2>;
   }
 
-  const totalJama = rokar.transactions.filter(t => t.type === 'Jama').reduce((tot, t) => tot + t.amount, 0);
-  const totalNaam = rokar.transactions.filter(t => t.type === 'Naam').reduce((tot, t) => tot + t.amount, 0);
-  const aajKaGalla = rokar.openingBalance + totalJama - totalNaam;
+  const { rokar, transactions } = data;
+
+  const totalJama = transactions.reduce((tot, t) => tot + (t.credit || 0), 0);
+  const totalNaam = transactions.reduce((tot, t) => tot + (t.debit || 0), 0);
+  const aajKaGalla = rokar.closingBalance; 
 
   return (
     <div className="container mt-4" style={{ fontFamily: 'Arial, sans-serif' }}>
@@ -199,8 +234,8 @@ function Rokar() {
                 <label className="fw-bold">کیٹیگری (Category):</label>
                 <select className="form-control" value={category} onChange={(e) => setCategory(e.target.value)}>
                   <option value="General">General</option>
-                  <option value="Kisan/Beopari">Kisan / Beopari</option>
-                  <option value="Mazdoori">Mazdoori</option>
+                  <option value="Kisan">Kisan</option>
+                  <option value="Kharidar">Kharidar</option>
                   <option value="Kharcha">Dukan Kharcha</option>
                 </select>
               </div>
@@ -228,23 +263,36 @@ function Rokar() {
               <th>کیٹیگری (Category)</th>
               <th>جمع (IN)</th>
               <th>نام (OUT)</th>
+              {/* ✅ NAYA: Action Column sirf Seth (Admin) ko dikhega */}
+              {userRole === 'Admin' && <th>ایکشن (Action)</th>}
             </tr>
           </thead>
           <tbody>
-            {rokar.transactions.length === 0 ? (
+            {transactions.length === 0 ? (
               <tr>
-                <td colSpan="7" className="text-center text-muted py-4">آج ابھی تک کوئی لین دین نہیں ہوا۔ (No entries yet)</td>
+                <td colSpan={userRole === 'Admin' ? "8" : "7"} className="text-center text-muted py-4">آج ابھی تک کوئی لین دین نہیں ہوا۔ (No entries yet)</td>
               </tr>
             ) : (
-              [...rokar.transactions].reverse().map((t, index) => (
+              [...transactions].map((t, index) => (
                 <tr key={index}>
-                  <td className="fw-bold text-primary" dir="ltr">{t.referenceId || 'N/A'}</td>
-                  <td dir="ltr">{t.time}</td>
+                  <td className="fw-bold text-primary" dir="ltr">{t.voucherNo || 'N/A'}</td>
+                  <td dir="ltr">{new Date(t.date).toLocaleTimeString()}</td>
                   <td className="fw-bold">{t.partyName || 'Cash / General'}</td>
-                  <td className="text-start">{t.description}</td>
-                  <td>{t.category}</td>
-                  <td className="text-success fw-bold">{t.type === 'Jama' ? `Rs. ${t.amount.toLocaleString()}` : '-'}</td>
-                  <td className="text-danger fw-bold">{t.type === 'Naam' ? `Rs. ${t.amount.toLocaleString()}` : '-'}</td>
+                  <td className="text-start">{t.details}</td>
+                  <td>{t.transactionType}</td>
+                  <td className="text-success fw-bold">{t.credit > 0 ? `Rs. ${t.credit.toLocaleString()}` : '-'}</td>
+                  <td className="text-danger fw-bold">{t.debit > 0 ? `Rs. ${t.debit.toLocaleString()}` : '-'}</td>
+                  {/* ✅ NAYA: Delete Button sirf Seth (Admin) ko dikhega */}
+                  {userRole === 'Admin' && (
+                    <td>
+                      <button 
+                        onClick={() => handleDeleteEntry(t._id)}
+                        className="btn btn-sm btn-danger fw-bold"
+                      >
+                        🗑️ Delete
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}

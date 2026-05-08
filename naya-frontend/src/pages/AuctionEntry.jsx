@@ -1,7 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+// ✅ FIX 2: Dukan ki maloomat ko alag nikal liya (Hardcoded nahi rahi)
+const DUKAN_INFO = {
+  nameUrdu: "میاں علی محمد اینڈ سنز",
+  nameEng: "Mian Ali Muhammad & Sons",
+  addressUrdu: "دوکان نمبر 74/G غلہ منڈی بورے والا",
+  addressEng: "74/G, Grain Market Burewala",
+  phone1Urdu: "میاں عبدالستار کلیم: 0336-7202647 / 0309-7032647",
+  phone2Urdu: "میاں عثمان: 0300-6998470"
+};
 
 function AuctionEntry() {
   const [khatas, setKhatas] = useState([]);
+  
+  // ✅ FIX 1: Parcha Number ke liye automatically 6-digit ka number generate hoga
+  const [parchaNumber, setParchaNumber] = useState(Math.floor(100000 + Math.random() * 900000));
   
   const [transactionType, setTransactionType] = useState('Adaigi');
   const [farmerName, setFarmerName] = useState(''); 
@@ -14,26 +28,49 @@ function AuctionEntry() {
   const [commPercent, setCommPercent] = useState(''); 
   const [laborPercent, setLaborPercent] = useState(''); 
   const [damiPercent, setDamiPercent] = useState(''); 
-  const [marketFeePercent, setMarketFeePercent] = useState(''); // Naya Market Fee State
+  const [marketFeePercent, setMarketFeePercent] = useState(''); 
   const [status, setStatus] = useState('');
 
-  const [printFlag, setPrintFlag] = useState(false);
+  const printFlagRef = useRef(false);
+
+  const navigate = useNavigate();
+  const getToken = () => localStorage.getItem('token');
+
+  const handleSessionExpire = () => {
+    alert("Aapka session expire ho gaya hai. Dobara login karein!");
+    localStorage.clear();
+    navigate('/login');
+  };
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/parcha/khatagroup/all')
-      .then(res => res.json())
-      .then(data => {
-        setKhatas(data);
-        if(data.length > 0) setKhataCategory(data[0].name); 
+    fetch('/api/parcha/khatagroup/all', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'auth-token': getToken()
+      }
+    })
+      .then(res => {
+        if (res.status === 401) throw new Error('Unauthorized');
+        return res.json();
       })
-      .catch(err => console.log(err));
+      .then(data => {
+        if (Array.isArray(data)) {
+          setKhatas(data);
+          if(data.length > 0) setKhataCategory(data[0].name); 
+        }
+      })
+      .catch(err => {
+        if (err.message === 'Unauthorized') handleSessionExpire();
+        else console.log(err);
+      });
   }, []);
 
   const grossAmount = (Number(weight) || 0) * (Number(rate) || 0);
   const commAmount = grossAmount * ((Number(commPercent) || 0) / 100);
   const laborAmount = grossAmount * ((Number(laborPercent) || 0) / 100);
   const damiAmount = grossAmount * ((Number(damiPercent) || 0) / 100);
-  const marketFeeAmount = grossAmount * ((Number(marketFeePercent) || 0) / 100); // Market Fee Calculation
+  const marketFeeAmount = grossAmount * ((Number(marketFeePercent) || 0) / 100); 
   
   const totalDeductions = commAmount + laborAmount + damiAmount + marketFeeAmount;
   const netAmount = grossAmount - totalDeductions; 
@@ -43,9 +80,12 @@ function AuctionEntry() {
     setStatus('⏳ Parchi Save ho rahi hai...');
 
     try {
-      const response = await fetch('http://localhost:5000/api/parcha/add', {
+      const response = await fetch('/api/parcha/add', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'auth-token': getToken() 
+        },
         body: JSON.stringify({
           transactionType,
           farmerName,
@@ -53,15 +93,20 @@ function AuctionEntry() {
           cropType,
           weight,
           rate,
-          totalAmount: netAmount 
-          // Note: Agar backend par market fee alag se save karni ho, toh yahan marketFeeAmount bhi bhej sakte hain
+          totalAmount: netAmount,
+          commission: commAmount,
+          mazdoori: laborAmount,
+          dami: damiAmount,
+          marketFee: marketFeeAmount
         })
       });
+
+      if (response.status === 401) return handleSessionExpire();
 
       if (response.ok) {
         setStatus('✅ Parchi Save ho gayi!');
         
-        if (printFlag) {
+        if (printFlagRef.current) {
           window.print();
         }
 
@@ -73,12 +118,20 @@ function AuctionEntry() {
           setCommPercent('');
           setLaborPercent('');
           setDamiPercent('');
-          setMarketFeePercent(''); // Naya Reset
+          setMarketFeePercent('');
           setStatus('');
+          setParchaNumber(Math.floor(100000 + Math.random() * 900000)); // Nayi parchi ke liye naya number
+          
+          if (khatas.length > 0) {
+            setKhataCategory(khatas[0].name);
+          } else {
+            setKhataCategory('');
+          }
         }, 1000);
 
       } else {
-        setStatus('❌ Masla aagaya, Parchi save nahi hui.');
+        const errorData = await response.json();
+        setStatus('❌ ' + (errorData.error || 'Masla aagaya, Parchi save nahi hui.'));
       }
     } catch (error) {
       setStatus('❌ Network Error!');
@@ -112,11 +165,12 @@ function AuctionEntry() {
 
       <div style={{ padding: '30px', fontFamily: 'Arial', maxWidth: '800px', margin: '0 auto' }}>
         
-        {/* ========================================================================= */}
-        {/* 💻 SCREEN VIEW (MUNSHI KA FORM) */}
-        {/* ========================================================================= */}
         <div className="screen-only">
-          <h2 style={{ color: '#000080', borderBottom: '2px solid #000080', paddingBottom: '10px' }}>📝 Naya Katcha Parcha</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #000080', paddingBottom: '10px', marginBottom: '15px' }}>
+            <h2 style={{ color: '#000080', margin: 0 }}>📝 Naya Katcha Parcha</h2>
+            {/* Screen par bhi parcha number dikhayen */}
+            <h4 style={{ color: '#e74c3c', margin: 0 }}>Parchi #: {parchaNumber}</h4>
+          </div>
           
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
             
@@ -172,7 +226,6 @@ function AuctionEntry() {
               </div>
             </div>
 
-            {/* DEDUCTIONS ROW (Ab 4 boxes hain) */}
             <div style={{ display: 'flex', gap: '15px', backgroundColor: '#e9ecef', padding: '10px', borderRadius: '5px' }}>
               <div style={{ flex: 1 }}>
                 <label><b>Commission (%):</b></label>
@@ -206,10 +259,10 @@ function AuctionEntry() {
             </div>
 
             <div style={{ display: 'flex', gap: '15px', marginTop: '10px' }}>
-              <button type="submit" onClick={() => setPrintFlag(true)} style={{ flex: 1, padding: '15px', backgroundColor: '#198754', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>
+              <button type="submit" onClick={() => { printFlagRef.current = true; }} style={{ flex: 1, padding: '15px', backgroundColor: '#198754', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>
                 💾 Save & Print 🖨️
               </button>
-              <button type="submit" onClick={() => setPrintFlag(false)} style={{ flex: 1, padding: '15px', backgroundColor: '#000080', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>
+              <button type="submit" onClick={() => { printFlagRef.current = false; }} style={{ flex: 1, padding: '15px', backgroundColor: '#000080', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>
                 💾 Sirf Save Karein
               </button>
             </div>
@@ -217,16 +270,13 @@ function AuctionEntry() {
           </form>
         </div>
 
-        {/* ========================================================================= */}
-        {/* 🖨️ PRINT VIEW (URDU LETTER PAD DESIGN) */}
-        {/* ========================================================================= */}
+        {/* 🖨️ PRINT VIEW */}
         <div className="print-only urdu-text" dir="rtl" style={{ border: '0px', backgroundColor: 'white', color: '#000' }}>
           
-          {/* Header - Dukaan Ka Naam */}
           <div className="d-flex justify-content-between align-items-center border-bottom border-dark pb-2 mb-2">
             <div className="text-right" style={{ width: '40%' }}>
-              <h2 className="mb-0 fw-bold" style={{ color: '#000080' }}>میاں علی محمد اینڈ سنز</h2>
-              <p className="mb-0 fw-bold">دوکان نمبر 74/G غلہ منڈی بورے والا</p>
+              <h2 className="mb-0 fw-bold" style={{ color: '#000080' }}>{DUKAN_INFO.nameUrdu}</h2>
+              <p className="mb-0 fw-bold">{DUKAN_INFO.addressUrdu}</p>
             </div>
             
             <div className="text-center" style={{ width: '20%' }}>
@@ -234,31 +284,27 @@ function AuctionEntry() {
             </div>
 
             <div className="text-left" dir="ltr" style={{ width: '40%', textAlign: 'left' }}>
-              <h4 className="mb-0 fw-bold" style={{ color: '#000080', fontFamily: 'Arial' }}>Mian Ali Muhammad & Sons</h4>
-              <p className="mb-0 fw-bold" style={{ fontFamily: 'Arial' }}>74/G, Grain Market Burewala</p>
+              <h4 className="mb-0 fw-bold" style={{ color: '#000080', fontFamily: 'Arial' }}>{DUKAN_INFO.nameEng}</h4>
+              <p className="mb-0 fw-bold" style={{ fontFamily: 'Arial' }}>{DUKAN_INFO.addressEng}</p>
             </div>
           </div>
 
-          {/* Phone Numbers */}
           <div className="d-flex justify-content-between border-bottom border-dark pb-2 mb-4 fs-6">
              <div dir="ltr" style={{ fontFamily: 'Arial' }}>
-                <span className="urdu-text fw-bold me-2">میاں عبدالستار کلیم: </span>
-                <b>0336-7202647 / 0309-7032647</b>
+                <span className="urdu-text fw-bold me-2">{DUKAN_INFO.phone1Urdu}</span>
              </div>
              <div dir="ltr" style={{ fontFamily: 'Arial' }}>
-                <span className="urdu-text fw-bold me-2">میاں عثمان: </span>
-                <b>0300-6998470</b>
+                <span className="urdu-text fw-bold me-2">{DUKAN_INFO.phone2Urdu}</span>
              </div>
           </div>
 
-          {/* Bil Banam, Number, Tareekh */}
           <div className="d-flex justify-content-between mb-3 fs-5">
               <div><b>بل بنام:</b> <u style={{ fontFamily: 'Arial', marginRight: '10px' }}>{farmerName || '................'} ({khataCategory})</u></div>
-              <div dir="ltr"><span className="urdu-text fw-bold">نمبر:</span> <b style={{ fontFamily: 'Arial' }}>......</b></div>
+              {/* ✅ FIX 1: Parcha number yahan show hoga */}
+              <div dir="ltr"><span className="urdu-text fw-bold">نمبر:</span> <b style={{ fontFamily: 'Arial' }}>{parchaNumber}</b></div>
               <div><b>تاریخ:</b> <u style={{ fontFamily: 'Arial', marginRight: '10px' }}>{currentDate}</u></div>
           </div>
 
-          {/* Asal Table */}
           <table className="table table-bordered border-dark border-2 text-center align-middle">
             <thead>
               <tr className="fs-5">
@@ -269,7 +315,6 @@ function AuctionEntry() {
               </tr>
             </thead>
             <tbody style={{ fontFamily: 'Arial', fontSize: '18px' }}>
-              {/* Fasal ki entry dynamically */}
               <tr>
                 <td className="urdu-text fs-5 border-dark">{cropType || '................'}</td>
                 <td className="urdu-text border-dark">وزن: {weight || '0'} من</td>
@@ -277,7 +322,6 @@ function AuctionEntry() {
                 <td className="border-dark">{grossAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               </tr>
               
-              {/* Katoati (Deductions) sirf tab show hogi jab percent dali gayi ho */}
               <tr>
                 <td className="border-dark"></td>
                 <td className="text-start urdu-text border-dark p-2" dir="rtl" style={{ lineHeight: '1.8' }}>
@@ -292,7 +336,6 @@ function AuctionEntry() {
                 </td>
               </tr>
 
-              {/* Total Saffa Amount */}
               <tr>
                 <td colSpan="3" className="text-start urdu-text fs-4 fw-bold border-dark bg-light">
                   نیٹ صافی رقم:
@@ -304,7 +347,6 @@ function AuctionEntry() {
             </tbody>
           </table>
 
-          {/* Footer */}
           <div className="d-flex justify-content-between mt-5 pt-5">
             <div className="fs-5">
               <span className="badge bg-dark rounded-pill py-2 px-3 fs-6">نوٹ</span> <b className="ms-2">بھول چوک لین دین</b>

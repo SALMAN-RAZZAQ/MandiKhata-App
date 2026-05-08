@@ -1,23 +1,43 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 function PakkaKhata() {
   const [searchName, setSearchName] = useState('');
   const [partyData, setPartyData] = useState(null);
+  const navigate = useNavigate();
 
   // NAYA: Search button dabane par backend se Party ka data mangwana
-  const searchKhata = () => {
+  const searchKhata = async () => {
     if (!searchName) return alert("Pehle party ka naam likhein!");
     
-    fetch(`http://localhost:5000/api/rokar/khata/${searchName}`)
-      .then(res => {
-        if (!res.ok) throw new Error("Khata nahi mila");
-        return res.json();
-      })
-      .then(data => setPartyData(data))
-      .catch(err => {
-        alert("❌ Is naam ka koi khata database mein nahi mila!");
-        setPartyData(null);
+    try {
+      // 🔑 Guard ke liye chabi
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch(`/api/rokar/khata/${searchName}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'auth-token': token 
+        }
       });
+
+      if (response.status === 401) {
+        alert("Aapka session expire ho gaya hai. Dobara login karein!");
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        navigate('/login');
+        return;
+      }
+
+      if (!response.ok) throw new Error("Khata nahi mila");
+
+      const data = await response.json();
+      setPartyData(data);
+    } catch (err) {
+      alert("❌ Is naam ka koi khata database mein nahi mila!");
+      setPartyData(null);
+    }
   };
 
   // Hisaab Kitab (Totals)
@@ -26,22 +46,25 @@ function PakkaKhata() {
 
   if (partyData && partyData.transactions) {
     partyData.transactions.forEach(item => {
-      if (item.type === 'Jama') totalJama += item.amount;
-      if (item.type === 'Naam') totalNaam += item.amount;
+      // ✅ FIX: Naye backend fields use kiye hain
+      totalJama += (item.credit || 0); 
+      totalNaam += (item.debit || 0);  
     });
   }
 
-  // NAYA: BAQAYA BALANCE (Jama aur Naam ka farq)
-  const netBalance = totalJama - totalNaam;
+  // ✅ FIX: Asal Database wala currentBalance aur balanceType use kiya hai
+  const netBalance = partyData ? partyData.currentBalance : 0;
   let balanceStatus = "";
   let balanceColor = "";
 
-  if (netBalance > 0) {
-    balanceStatus = "Aapne Dene Hain (Payable)";
-    balanceColor = "#dc3545"; // Laal rang
-  } else if (netBalance < 0) {
-    balanceStatus = "Aapne Lene Hain (Receivable)";
-    balanceColor = "#198754"; // Sabz rang
+  if (partyData && partyData.currentBalance !== 0) {
+    if (partyData.balanceType === 'Jama') {
+      balanceStatus = "Aapne Dene Hain (Payable)";
+      balanceColor = "#dc3545"; // Laal rang
+    } else {
+      balanceStatus = "Aapne Lene Hain (Receivable)";
+      balanceColor = "#198754"; // Sabz rang
+    }
   } else {
     balanceStatus = "Hisaab Nil (Barabar)";
     balanceColor = "#000080"; // Neela rang
@@ -96,18 +119,19 @@ function PakkaKhata() {
               ) : (
                 partyData.transactions.map((item, index) => (
                   <tr key={index} style={{ borderBottom: '1px solid #ddd' }}>
-                    <td style={tdStyle}>{item.date}</td>
-                    <td style={{...tdStyle, color: '#000080', fontWeight: 'bold'}}>{item.referenceId || '-'}</td>
-                    <td style={{...tdStyle, textAlign: 'left'}}>{item.description}</td>
+                    {/* ✅ FIX: Date aur Naye Fields ko theek kiya */}
+                    <td style={tdStyle}>{new Date(item.date).toLocaleDateString('en-GB')}</td>
+                    <td style={{...tdStyle, color: '#000080', fontWeight: 'bold'}}>{item.voucherNo || '-'}</td>
+                    <td style={{...tdStyle, textAlign: 'left'}}>{item.details}</td>
                     
-                    {/* Jama ka column */}
+                    {/* Jama ka column (Credit) */}
                     <td style={{ ...tdStyle, fontWeight: 'bold', color: '#198754' }}>
-                      {item.type === 'Jama' ? `Rs. ${item.amount.toLocaleString()}` : '-'}
+                      {item.credit > 0 ? `Rs. ${item.credit.toLocaleString()}` : '-'}
                     </td>
                     
-                    {/* Naam ka column */}
+                    {/* Naam ka column (Debit) */}
                     <td style={{ ...tdStyle, fontWeight: 'bold', color: '#dc3545' }}>
-                      {item.type === 'Naam' ? `Rs. ${item.amount.toLocaleString()}` : '-'}
+                      {item.debit > 0 ? `Rs. ${item.debit.toLocaleString()}` : '-'}
                     </td>
                   </tr>
                 ))

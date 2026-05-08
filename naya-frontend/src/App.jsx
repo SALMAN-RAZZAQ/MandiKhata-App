@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'; // NAYA: useLocation import kiya
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import PakkaKhata from './pages/PakkaKhata';
@@ -24,7 +24,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 };
 
 // ==========================================
-// ✅ NAYA JADOO: Layout Component jo Routes aur Navbar ko control karega
+// Layout Component jo Routes aur Navbar ko control karega
 // ==========================================
 const MainLayout = () => {
   const location = useLocation();
@@ -48,11 +48,22 @@ const MainLayout = () => {
           } 
         />
 
+        {/* ✅ THEEK KIYA: Settings sirf Admin (Seth) ke liye */}
         <Route 
           path="/settings" 
           element={
-            <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
+            <ProtectedRoute allowedRoles={['Admin']}>
               <KhataSettings />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* ✅ THEEK KIYA: Pakka Khata ab Admin aur Munshi dono dekh sakte hain */}
+        <Route 
+          path="/pakka-khata" 
+          element={
+            <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
+              <PakkaKhata />
             </ProtectedRoute>
           } 
         />
@@ -63,15 +74,6 @@ const MainLayout = () => {
           element={
             <ProtectedRoute allowedRoles={['Admin']}>
               <Dashboard />
-            </ProtectedRoute>
-          } 
-        />
-        
-        <Route 
-          path="/pakka-khata" 
-          element={
-            <ProtectedRoute allowedRoles={['Admin']}>
-              <PakkaKhata />
             </ProtectedRoute>
           } 
         />

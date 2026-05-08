@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // NAYA: Smooth page tabdeeli ke liye
+import { useNavigate } from 'react-router-dom'; 
 
 function Login() {
-  // NAYA: Ab dropdown ki jagah text input hoga taake koi bhi apna username likh sake (maslan: salman)
   const [username, setUsername] = useState(''); 
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,8 +15,7 @@ function Login() {
     setLoading(true);
 
     try {
-      // ✅ NAYA: Ab request humare naye secure raste par jayegi
-      const response = await fetch('http://localhost:5000/api/auth/login', {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }) 
@@ -26,16 +24,14 @@ function Login() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // ✅ Jadoo: Role ke sath sath Digital Chabi (Token) bhi save karni hai
         localStorage.setItem('token', data.authToken);
         localStorage.setItem('role', data.role);
         localStorage.setItem('username', data.username);
         
-        // Role ke hisab se page par bhejna (Bina page refresh kiye)
         if (data.role === 'Admin') {
-          navigate('/dashboard'); // Admin ko Dashboard par bhejein
+          navigate('/dashboard'); 
         } else {
-          navigate('/auction'); // Munshi ko Auction par bhejein
+          navigate('/auction'); 
         }
       } else {
         setError('❌ ' + (data.message || 'Login mein masla hai!'));
@@ -56,14 +52,14 @@ function Login() {
 
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center' }}>
           
-          {/* ✅ NAYA: Dropdown khatam, yahan Username likhne wala dabba laga diya */}
           <div style={{ width: '90%' }}>
             <label style={{ display: 'block', textAlign: 'left', fontWeight: 'bold', marginBottom: '5px' }}>یوزر نیم (Username):</label>
             <input 
               type="text" 
               value={username} 
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="salman"
+              /* ✅ FIX: Placeholder mein ab salman ki jagah general text hai */
+              placeholder="Apna username likhein..."
               required
               style={{ width: '100%', padding: '15px', fontSize: '18px', borderRadius: '5px', border: '2px solid #ccc', boxSizing: 'border-box' }}
             />

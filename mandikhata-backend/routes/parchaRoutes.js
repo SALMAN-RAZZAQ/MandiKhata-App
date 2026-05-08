@@ -29,7 +29,9 @@ router.post('/khatagroup/add', fetchUser, adminOnly, async (req, res) => {
 });
 
 // 2. GET ALL KHATA — ✅ OPEN
-router.get('/khatagroup/all', async (req, res) => {
+
+  // ✅ FIX: fetchUser laga kar isay secure kar diya
+router.get('/khatagroup/all', fetchUser, async (req, res) => {
   try {
     const groups = await KhataGroup.find();
     res.status(200).json(groups);
