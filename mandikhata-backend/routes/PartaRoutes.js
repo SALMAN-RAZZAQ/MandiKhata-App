@@ -8,13 +8,14 @@ const adminOnly = require('../middleware/adminOnly');
 
 // =========================================
 // Route 1: Naya Parta Bill Banana
+// ✅ FIX: adaigiAmount ko hataya, damiPercent + damiAmount add kiya
 // =========================================
 router.post('/add', fetchUser, async (req, res) => {
   try {
     const {
       customerName, khataCategory, items,
       commPercent, commAmount, mazdooriAmount,
-      marketFeeAmount, adaigiAmount, details
+      marketFeeAmount, damiPercent, damiAmount, details
     } = req.body;
 
     // Validation
@@ -23,8 +24,10 @@ router.post('/add', fetchUser, async (req, res) => {
 
     // Gross Amount calculate karo (sab items ka total)
     const grossAmount = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+    // ✅ FIX: adaigiAmount ki jagah damiAmount use kiya — ab Dami sahi katega
     const totalDeductions = (Number(commAmount) || 0) + (Number(mazdooriAmount) || 0) + 
-                           (Number(marketFeeAmount) || 0) + (Number(adaigiAmount) || 0);
+                           (Number(marketFeeAmount) || 0) + (Number(damiAmount) || 0);
     const netAmount = grossAmount - totalDeductions;
 
     // Party dhoondo ya banao
@@ -54,6 +57,7 @@ router.post('/add', fetchUser, async (req, res) => {
     const finalPartaNo = 'PRT-' + nextNumber;
 
     // Parta Bill save karo
+    // ✅ FIX: adaigiAmount hataya, damiPercent + damiAmount save ho raha hai
     const newBill = new PartaBill({
       partaNo: finalPartaNo,
       customerName,
@@ -65,7 +69,8 @@ router.post('/add', fetchUser, async (req, res) => {
       commAmount: Number(commAmount) || 0,
       mazdooriAmount: Number(mazdooriAmount) || 0,
       marketFeeAmount: Number(marketFeeAmount) || 0,
-      adaigiAmount: Number(adaigiAmount) || 0,
+      damiPercent: Number(damiPercent) || 0,
+      damiAmount: Number(damiAmount) || 0,
       totalDeductions,
       netAmount,
       details: details || ''

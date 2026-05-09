@@ -32,18 +32,18 @@ function PartaBill() {
 
   // Khata Groups load karo
   useEffect(() => {
-  fetch('/api/parcha/khatagroup/all', {
-  headers: { 'auth-token': getToken() }
-})
-    .then(res => res.json())
-    .then(data => {
-      if (Array.isArray(data) && data.length > 0) {
-        setKhatas(data);
-        setKhataCategory(data[0].name);
-      }
+    fetch('/api/parcha/khatagroup/all', {
+      headers: { 'auth-token': getToken() }
     })
-    .catch(err => console.error('Khata load error:', err));
-}, []);
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setKhatas(data);
+          setKhataCategory(data[0].name);
+        }
+      })
+      .catch(err => console.error('Khata load error:', err));
+  }, []);
 
   // =========================================
   // ITEM MANAGEMENT (Add/Remove/Update)
@@ -78,9 +78,9 @@ function PartaBill() {
   const commAmount = grossAmount * ((Number(commPercent) || 0) / 100);
   const damiAmount = grossAmount * ((Number(damiPercent) || 0) / 100);
   const totalDeductions = commAmount +
-  (Number(mazdooriAmount) || 0) +
-  (Number(marketFeeAmount) || 0) +
-  damiAmount;
+    (Number(mazdooriAmount) || 0) +
+    (Number(marketFeeAmount) || 0) +
+    damiAmount;
   const netAmount = grossAmount - totalDeductions;
 
   // =========================================
@@ -117,7 +117,9 @@ function PartaBill() {
           commAmount,
           mazdooriAmount: Number(mazdooriAmount) || 0,
           marketFeeAmount: Number(marketFeeAmount) || 0,
-          adaigiAmount: Number(adaigiAmount) || 0,
+          // ✅ FIX: adaigiAmount ko nikal kar damiPercent aur damiAmount backend ko bhej diya
+          damiPercent: Number(damiPercent) || 0,
+          damiAmount: damiAmount,
           details
         })
       });
@@ -142,7 +144,7 @@ function PartaBill() {
           setCommPercent('');
           setMazdooriAmount('');
           setMarketFeeAmount('');
-          setAdaigiAmount('');
+          setDamiPercent(''); // ✅ FIX: setAdaigiAmount('') ko setDamiPercent('') se badal diya
           setDetails('');
           setStatus('');
           setSavedPartaNo('');

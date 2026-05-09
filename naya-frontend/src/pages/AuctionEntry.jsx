@@ -7,8 +7,8 @@ const DUKAN_INFO = {
   nameEng: "Mian Ali Muhammad & Sons",
   addressUrdu: "دوکان نمبر 74/G غلہ منڈی بورے والا",
   addressEng: "74/G, Grain Market Burewala",
-  phone1Urdu: "میاں عبدالستار کلیم: 0336-7202647 / 0309-7032647",
-  phone2Urdu: "میاں عثمان: 0300-6998470"
+  phone1Urdu: "میاں عبدالستار کلیم: 03367202647/03097032647",
+  phone2Urdu: "میاں عثمان: 03006998470"
 };
 
 function AuctionEntry() {
