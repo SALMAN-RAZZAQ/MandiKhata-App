@@ -28,14 +28,17 @@ function Navbar() {
         )}
 
         {/* YEH BUTTONS DONO (ADMIN AUR MUNSHI) KO DIKHENGE */}
-        {/* ✅ FIX: Pakka Khata ab Munshi aur Admin dono dekh sakte hain */}
         <Link to="/pakka-khata" style={linkStyle}>📒 Pakka Khata</Link>
         <Link to="/auction" style={linkStyle}>📝 Naya Parcha</Link>
+        
+        {/* ✅ NAYA: Journal Voucher */}
+        <Link to="/journal-voucher" style={{...linkStyle, color: '#c084fc'}}>📒 Journal</Link>
         
         {/* Rokar (Cashbook) Ka Link */}
         <Link to="/rokar" style={{...linkStyle, fontSize: '20px'}}>
           💰 روکڑ (Rokar)
         </Link>
+        <Link to="/parta-bill" style={linkStyle}>📋 Parta Bill</Link>
         
         <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' }}>
           🔒 Logout
@@ -49,3 +52,4 @@ function Navbar() {
 const linkStyle = { color: 'white', textDecoration: 'none', fontSize: '18px', fontWeight: 'bold', padding: '8px 12px', borderRadius: '4px', transition: 'background-color 0.3s' };
 
 export default Navbar;
+

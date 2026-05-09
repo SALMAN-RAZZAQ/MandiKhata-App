@@ -23,7 +23,6 @@ function KhataSettings() {
 
   const fetchGroups = async () => {
     try {
-      // ✅ FIX: Ab chabi ke sath request jayegi
       const response = await fetch('/api/parcha/khatagroup/all', {
         method: 'GET',
         headers: {
@@ -31,10 +30,22 @@ function KhataSettings() {
           'auth-token': getToken()
         }
       });
+
+      // ✅ FIX: 401 check karo
+      if (response.status === 401) return handleSessionExpire();
+
       const data = await response.json();
-      setGroups(data);
+
+      // ✅ FIX: Array check karo - galat data set na ho
+      if (Array.isArray(data)) {
+        setGroups(data);
+      } else {
+        console.error("Unexpected response:", data);
+        setGroups([]);
+      }
     } catch (error) {
-      console.error("Categories load nahi ho sakeen");
+      console.error("Categories load nahi ho sakeen:", error);
+      setGroups([]);
     }
   };
 

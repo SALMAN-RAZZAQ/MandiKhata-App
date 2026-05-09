@@ -7,6 +7,8 @@ import KhataSettings from './pages/KhataSettings';
 import AuctionEntry from './pages/AuctionEntry';
 import Rokar from './pages/Rokar';
 import Login from './pages/Login';
+import JournalVoucher from './pages/JournalVoucher'; // ✅ NAYA
+import PartaBill from './pages/PartaBill';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const role = localStorage.getItem('role');
@@ -87,6 +89,22 @@ const MainLayout = () => {
             </ProtectedRoute>
           } 
         />
+        {/* parta route*/}
+       <Route path="/parta-bill" element={
+          <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
+          <PartaBill />
+           </ProtectedRoute>
+              } />
+
+        {/* ✅ NAYA: JOURNAL VOUCHER - ADMIN & MUNSHI DONO KE LIYE */}
+        <Route 
+          path="/journal-voucher" 
+          element={
+            <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
+              <JournalVoucher />
+            </ProtectedRoute>
+          } 
+        />
       </Routes>
     </>
   );
@@ -104,3 +122,4 @@ function App() {
 }
 
 export default App;
+

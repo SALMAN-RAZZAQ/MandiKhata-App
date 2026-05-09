@@ -104,21 +104,28 @@ router.post('/add-entry', fetchUser, async (req, res) => {
   }
 });
 
-
 // Route 3: Party ka Pakka Khata
 router.get('/khata/:name', fetchUser, async (req, res) => {
   try {
-    const party = await Party.findOne({ name: req.params.name });
+    // ✅ BUG FIX #3: trim() lagao aur case-insensitive regex use karo
+    const searchName = req.params.name.trim();
+    const regexQuery = { $regex: new RegExp('^\\s*' + searchName + '\\s*$', 'i') };
+
+    const party = await Party.findOne({ name: regexQuery });
     if (!party) {
       return res.status(404).json({ message: "Is naam ka koi khata nahi mila!" });
     }
-    const history = await Transaction.find({ partyName: req.params.name }).sort({ createdAt: -1 });
+
+    // ✅ BUG FIX #3: Transaction search bhi party ke exact saved name se karo
+    // (Database mein jo naam save hai, usi se dhoondein - search input se nahi)
+    const history = await Transaction.find({ 
+      partyName: party.name  // party.name = database ka sahi naam
+    }).sort({ createdAt: -1 });
     
-    // ✅ BUG 6 FIX: Response format ko theek kiya
-    const partyData = party.toObject(); // Mongoose document ko normal object banaya
-    partyData.transactions = history;   // History ko uske andar set kar diya
+    const partyData = party.toObject();
+    partyData.transactions = history;
     
-    res.json(partyData); // Ab frontend ko bilkul purane jaisa format milega
+    res.json(partyData);
   } catch (error) {
     console.error("Khata load karne mein masla:", error);
     res.status(500).json({ error: 'Server Error' });
@@ -165,3 +172,4 @@ router.delete('/delete-entry/:rokarId/:transactionId', fetchUser, adminOnly, asy
 });
 
 module.exports = router;
+

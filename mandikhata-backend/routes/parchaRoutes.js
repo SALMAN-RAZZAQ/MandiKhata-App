@@ -6,8 +6,18 @@ const Party = require('../models/Party');
 const KhataGroup = require('../models/KhataGroup');
 const User = require('../models/User');
 const Parcha = require('../models/Parcha'); // ✅ NAYA: Parcha model import kiya
+const Rokar = require('../models/Rokar'); // ✅ BUG FIX: Rokar import kiya
 const fetchUser = require('../middleware/fetchUser');
 const adminOnly = require('../middleware/adminOnly');
+
+// ✅ BUG FIX: Pakistan Time ke mutabiq aaj ki tareekh helper
+const getTodayDate = () => {
+  const d = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Karachi"}));
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`; 
+};
 
 // 1. ADD KHATA — ✅ Admin only
 router.post('/khatagroup/add', fetchUser, adminOnly, async (req, res) => {
@@ -124,6 +134,43 @@ router.post('/add', fetchUser, async (req, res) => {
     });
     await newTransaction.save();
 
+    // ✅ BUG FIX #2: Parcha save hone par Rokar (Cash Book) bhi auto-update ho
+    // =========================================================
+    // Logic:
+    // Adaigi = Hum ne party ko cash diya = Cash OUT = Rokar GHATEGA
+    // Baaki sab (Wasooli, Khareed, Baich) = Cash IN = Rokar BADHEGA
+    // =========================================================
+    try {
+      const todayDate = getTodayDate();
+      let aajKiRokar = await Rokar.findOne({ date: todayDate });
+
+      // Agar aaj ki Rokar exist nahi karti toh naya record banao
+      if (!aajKiRokar) {
+        const pichliRokar = await Rokar.findOne().sort({ createdAt: -1 });
+        const pichlaBaqi = pichliRokar ? pichliRokar.closingBalance : 0;
+        aajKiRokar = new Rokar({
+          date: todayDate,
+          openingBalance: pichlaBaqi,
+          closingBalance: pichlaBaqi,
+          isClosed: false
+        });
+      }
+
+      // Balance update karo
+      if (transactionType === 'Adaigi') {
+        aajKiRokar.closingBalance -= Number(totalAmount); // Cash OUT
+      } else {
+        aajKiRokar.closingBalance += Number(totalAmount); // Cash IN
+      }
+
+      await aajKiRokar.save();
+    } catch (rokarError) {
+      // Rokar update fail hone par parcha save cancel nahi hoga
+      // Sirf console mein error log hoga
+      console.error('⚠️ Rokar update mein masla:', rokarError);
+    }
+    // =========================================================
+
     res.status(201).json({ message: 'Parchi aur Khata dono update ho gaye!', data: newParcha });
     
   } catch (error) {
@@ -179,6 +226,23 @@ router.delete('/delete/:id', fetchUser, adminOnly, async (req, res) => {
     // 2. Transaction (Ledger) se bhi is parchy ki entry urra dein
     await Transaction.findOneAndDelete({ voucherNo: parcha.parchaNo });
 
+    // ✅ BUG FIX #2: Rokar balance bhi reverse karo
+    try {
+      const todayDate = getTodayDate();
+      const aajKiRokar = await Rokar.findOne({ date: todayDate });
+      if (aajKiRokar) {
+        // Save mein jo kiya tha uska ulta karo
+        if (parcha.transactionType === 'Adaigi') {
+          aajKiRokar.closingBalance += (parcha.netAmount || 0); // Cash OUT tha, wapis add karo
+        } else {
+          aajKiRokar.closingBalance -= (parcha.netAmount || 0); // Cash IN tha, wapis ghatao
+        }
+        await aajKiRokar.save();
+      }
+    } catch (rokarError) {
+      console.error('⚠️ Rokar reverse mein masla:', rokarError);
+    }
+
     // 3. Aakhir mein Parcha delete karein
     await Parcha.findByIdAndDelete(req.params.id);
 
@@ -192,8 +256,10 @@ router.delete('/delete/:id', fetchUser, adminOnly, async (req, res) => {
 // 7. PAKKA KHATA
 router.get('/party/:name', fetchUser, async (req, res) => {
   try {
+    // ✅ BUG FIX #3: trim() - extra spaces hataao, case-insensitive search
+    const searchName = req.params.name.trim();
     const party = await Party.findOne({ 
-      name: { $regex: new RegExp('^' + req.params.name + '$', 'i') } 
+      name: { $regex: new RegExp('^\\s*' + searchName + '\\s*$', 'i') } 
     });
     if (!party) return res.status(404).json({ error: 'Is naam ki koi party nahi mili!' });
     res.status(200).json(party);
@@ -228,6 +294,248 @@ router.post('/update-password', fetchUser, adminOnly, async (req, res) => {
     res.status(200).json({ message: 'Password kamyabi se badal gaya!' });
   } catch (error) {
     res.status(500).json({ error: 'Password update nahi ho saka.' });
+  }
+});
+
+// =========================================================
+// 10. JOURNAL VOUCHER — Non-cash transfer between parties
+// =========================================================
+router.post('/journal/add', fetchUser, async (req, res) => {
+  try {
+    const { debitPartyName, creditPartyName, amount, details, khataCategory } = req.body;
+
+    // Validation
+    if (!debitPartyName || !creditPartyName || !amount || !details) {
+      return res.status(400).json({ error: 'Tamam fields bharein! (Debit, Credit, Raqam, Tafseel)' });
+    }
+    if (Number(amount) <= 0) {
+      return res.status(400).json({ error: 'Raqam sahi nahi hai!' });
+    }
+    if (debitPartyName.trim().toLowerCase() === creditPartyName.trim().toLowerCase()) {
+      return res.status(400).json({ error: 'Debit aur Credit party alag honi chahiye!' });
+    }
+
+    // JV Number generate karo (JV-1001, JV-1002 ...)
+    const lastJV = await Transaction.findOne({ voucherNo: /^JV-/ }).sort({ _id: -1 });
+    let nextJVNum = 1001;
+    if (lastJV?.voucherNo) {
+      const parts = lastJV.voucherNo.split('-');
+      if (parts.length === 2 && !isNaN(parseInt(parts[1]))) {
+        nextJVNum = parseInt(parts[1]) + 1;
+      }
+    }
+    const jvNo = 'JV-' + nextJVNum;
+    const category = khataCategory || 'General';
+    const narration = `JV: ${details} | Dr: ${debitPartyName.trim()} | Cr: ${creditPartyName.trim()}`;
+
+    // --- DEBIT PARTY (balance GHATEGA - Naam) ---
+    let debitParty = await Party.findOne({
+      name: { $regex: new RegExp('^\\s*' + debitPartyName.trim() + '\\s*$', 'i') }
+    });
+    if (!debitParty) {
+      debitParty = new Party({ name: debitPartyName.trim(), partyType: category, currentBalance: 0 });
+    }
+    debitParty.currentBalance -= Number(amount);
+    debitParty.balanceType = debitParty.currentBalance >= 0 ? 'Jama' : 'Naam';
+    await debitParty.save();
+
+    // --- CREDIT PARTY (balance BADHEGA - Jama) ---
+    let creditParty = await Party.findOne({
+      name: { $regex: new RegExp('^\\s*' + creditPartyName.trim() + '\\s*$', 'i') }
+    });
+    if (!creditParty) {
+      creditParty = new Party({ name: creditPartyName.trim(), partyType: category, currentBalance: 0 });
+    }
+    creditParty.currentBalance += Number(amount);
+    creditParty.balanceType = creditParty.currentBalance >= 0 ? 'Jama' : 'Naam';
+    await creditParty.save();
+
+    // --- TRANSACTION 1: Debit Entry ---
+    await new Transaction({
+      voucherNo: jvNo,
+      transactionType: 'Journal',
+      khataCategory: category,
+      partyId: debitParty._id,
+      partyName: debitParty.name,
+      debit: Number(amount),
+      credit: 0,
+      details: narration
+    }).save();
+
+    // --- TRANSACTION 2: Credit Entry ---
+    await new Transaction({
+      voucherNo: jvNo,
+      transactionType: 'Journal',
+      khataCategory: category,
+      partyId: creditParty._id,
+      partyName: creditParty.name,
+      debit: 0,
+      credit: Number(amount),
+      details: narration
+    }).save();
+
+    // NOTE: Rokar affect NAHI hoga (yeh non-cash transaction hai)
+
+    res.status(201).json({
+      message: 'Journal Voucher kamyabi se save ho gaya!',
+      voucherNo: jvNo,
+      debitParty: debitParty.name,
+      creditParty: creditParty.name,
+      amount: Number(amount)
+    });
+
+  } catch (error) {
+    console.error('Journal Voucher error:', error);
+    res.status(500).json({ error: 'Journal Voucher save nahi ho saka.' });
+  }
+});
+
+// 11. JOURNAL VOUCHER DELETE
+router.delete('/journal/delete/:voucherNo', fetchUser, adminOnly, async (req, res) => {
+  try {
+    const { voucherNo } = req.params;
+
+    // Is JV ki saari transactions dhoondo
+    const entries = await Transaction.find({ voucherNo });
+    if (!entries || entries.length === 0) {
+      return res.status(404).json({ error: 'Yeh Journal Voucher nahi mila!' });
+    }
+
+    // Har entry ka balance reverse karo
+    for (const entry of entries) {
+      if (entry.partyName) {
+        const party = await Party.findOne({ name: entry.partyName });
+        if (party) {
+          party.currentBalance -= entry.credit;  // Credit reverse
+          party.currentBalance += entry.debit;   // Debit reverse
+          party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam';
+          await party.save();
+        }
+      }
+    }
+
+    // Transactions delete karo
+    await Transaction.deleteMany({ voucherNo });
+
+    res.status(200).json({ message: `Journal Voucher ${voucherNo} delete aur reverse ho gaya!` });
+  } catch (error) {
+    console.error('JV delete error:', error);
+    res.status(500).json({ error: 'Journal Voucher delete nahi ho saka.' });
+  }
+});
+// =========================================
+// JOURNAL VOUCHER — Add
+// =========================================
+router.post('/journal/add', fetchUser, async (req, res) => {
+  try {
+    const { debitPartyName, creditPartyName, amount, details, khataCategory } = req.body;
+
+    if (!debitPartyName) return res.status(400).json({ error: 'Debit party ka naam zaroori hai!' });
+    if (!creditPartyName) return res.status(400).json({ error: 'Credit party ka naam zaroori hai!' });
+    if (!amount || Number(amount) <= 0) return res.status(400).json({ error: 'Raqam zaroori hai!' });
+    if (!details) return res.status(400).json({ error: 'Tafseel likhna zaroori hai!' });
+
+    const voucherNo = 'JV-' + Date.now();
+    const amt = Number(amount);
+
+    // 1. DEBIT PARTY — balance ghatao
+    let debitParty = await Party.findOne({ name: debitPartyName });
+    if (!debitParty) {
+      debitParty = new Party({ 
+        name: debitPartyName, 
+        partyType: khataCategory || 'General', 
+        currentBalance: 0 
+      });
+    }
+    debitParty.currentBalance -= amt;
+    debitParty.balanceType = debitParty.currentBalance >= 0 ? 'Jama' : 'Naam';
+    await debitParty.save();
+
+    // 2. CREDIT PARTY — balance badhao
+    let creditParty = await Party.findOne({ name: creditPartyName });
+    if (!creditParty) {
+      creditParty = new Party({ 
+        name: creditPartyName, 
+        partyType: khataCategory || 'General', 
+        currentBalance: 0 
+      });
+    }
+    creditParty.currentBalance += amt;
+    creditParty.balanceType = creditParty.currentBalance >= 0 ? 'Jama' : 'Naam';
+    await creditParty.save();
+
+    // 3. DEBIT TRANSACTION
+    await new Transaction({
+      voucherNo: voucherNo,
+      date: Date.now(),
+      transactionType: 'Journal Voucher',
+      khataCategory: khataCategory || 'General',
+      partyId: debitParty._id,
+      partyName: debitPartyName,
+      debit: amt,
+      credit: 0,
+      details: `JV: ${details} (Cr: ${creditPartyName})`
+    }).save();
+
+    // 4. CREDIT TRANSACTION
+    await new Transaction({
+      voucherNo: voucherNo,
+      date: Date.now(),
+      transactionType: 'Journal Voucher',
+      khataCategory: khataCategory || 'General',
+      partyId: creditParty._id,
+      partyName: creditPartyName,
+      debit: 0,
+      credit: amt,
+      details: `JV: ${details} (Dr: ${debitPartyName})`
+    }).save();
+
+    res.status(201).json({
+      message: 'Journal Voucher kamyabi se save ho gaya!',
+      voucherNo,
+      debitParty: debitPartyName,
+      creditParty: creditPartyName,
+      amount: amt
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Journal Voucher save nahi ho saka.' });
+  }
+});
+
+// =========================================
+// JOURNAL VOUCHER — Delete (Admin only)
+// =========================================
+router.delete('/journal/delete/:voucherNo', fetchUser, adminOnly, async (req, res) => {
+  try {
+    const { voucherNo } = req.params;
+
+    // Is voucher ki saari transactions dhoondo
+    const transactions = await Transaction.find({ voucherNo });
+    if (!transactions || transactions.length === 0) {
+      return res.status(404).json({ error: 'Is voucher ki koi entry nahi mili!' });
+    }
+
+    // Har transaction ka balance reverse karo
+    for (const txn of transactions) {
+      const party = await Party.findById(txn.partyId);
+      if (party) {
+        party.currentBalance -= txn.credit;  // Credit reverse
+        party.currentBalance += txn.debit;   // Debit reverse
+        party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam';
+        await party.save();
+      }
+    }
+
+    // Saari transactions delete karo
+    await Transaction.deleteMany({ voucherNo });
+
+    res.status(200).json({ message: `Journal Voucher ${voucherNo} delete aur balance reverse ho gaya!` });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Delete nahi ho saka.' });
   }
 });
 

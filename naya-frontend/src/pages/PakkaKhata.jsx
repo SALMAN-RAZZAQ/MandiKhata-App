@@ -8,13 +8,15 @@ function PakkaKhata() {
 
   // NAYA: Search button dabane par backend se Party ka data mangwana
   const searchKhata = async () => {
-    if (!searchName) return alert("Pehle party ka naam likhein!");
+    // ✅ BUG FIX #3: trim() - user ke type kiye extra spaces hataao
+    const trimmedName = searchName.trim();
+    if (!trimmedName) return alert("Pehle party ka naam likhein!");
     
     try {
-      // 🔑 Guard ke liye chabi
       const token = localStorage.getItem('token');
       
-      const response = await fetch(`/api/rokar/khata/${searchName}`, {
+      // ✅ trimmedName bhejo - raw searchName nahi
+      const response = await fetch(`/api/rokar/khata/${encodeURIComponent(trimmedName)}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -165,3 +167,4 @@ const thStyle = { padding: '12px', borderBottom: '2px solid #ddd' };
 const tdStyle = { padding: '12px' };
 
 export default PakkaKhata;
+

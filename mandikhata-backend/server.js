@@ -18,8 +18,8 @@ app.use(express.json());
 // ✅ Routes — sab ek jagah saaf tarike se
 app.use('/api/auth',   require('./routes/authRoutes'));
 app.use('/api/parcha', require('./routes/parchaRoutes'));
-app.use('/api/rokar',  require('./routes/rokarRoutes'));
-
+app.use('/api/rokar',  require('./routes/RokarRoutes'));
+app.use('/api/parta', require('./routes/PartaRoutes'));
 // ✅ MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected!'))

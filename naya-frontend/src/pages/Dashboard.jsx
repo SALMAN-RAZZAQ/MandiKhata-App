@@ -51,28 +51,19 @@ function Dashboard() {
     fetchLedger();
     
     // ✅ FIX 2: Tool ki warning ke mutabiq isay wapis SECURE kar diya gaya hai (Chabi add ki)
-    fetch('/api/parcha/khatagroup/all', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'auth-token': getToken()
-      }
-    })
-      .then(res => {
-        if (res.status === 401) throw new Error('Unauthorized');
-        return res.json();
-      })
-      .then(data => {
-        if (Array.isArray(data)) {
-          setCategories(data);
-        } else {
-          setCategories([]);
-        }
-      })
-      .catch(err => {
-        if (err.message === 'Unauthorized') handleSessionExpire();
-        else setCategories([]);
-      });
+    // ✅ Token ke sath
+fetch('/api/parcha/khatagroup/all', {
+  headers: { 'auth-token': getToken() }
+})
+  .then(res => res.json())
+  .then(data => {
+    if (Array.isArray(data)) {
+      setCategories(data);
+    } else {
+      setCategories([]);
+    }
+  })
+  .catch(err => setCategories([]));
   }, []);
 
   const handleDelete = async (id) => {

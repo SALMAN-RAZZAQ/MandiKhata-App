@@ -14,9 +14,13 @@ const DUKAN_INFO = {
 function AuctionEntry() {
   const [khatas, setKhatas] = useState([]);
   
-  // ✅ FIX 1: Parcha Number ke liye automatically 6-digit ka number generate hoga
-  const [parchaNumber, setParchaNumber] = useState(Math.floor(100000 + Math.random() * 900000));
+  // ✅ BUG FIX: Ab parchaNumber backend se aayega (PRC-1001 format)
+  // Pehle "---" dikhao, save hone ke baad real number set hoga
+  const [parchaNumber, setParchaNumber] = useState('---');
   
+  // Print ke liye ref use karo - state update ka wait nahi karna padega
+  const confirmedParchaNoRef = useRef('---');
+
   const [transactionType, setTransactionType] = useState('Adaigi');
   const [farmerName, setFarmerName] = useState(''); 
   const [khataCategory, setKhataCategory] = useState('');
@@ -44,16 +48,9 @@ function AuctionEntry() {
 
   useEffect(() => {
     fetch('/api/parcha/khatagroup/all', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'auth-token': getToken()
-      }
-    })
-      .then(res => {
-        if (res.status === 401) throw new Error('Unauthorized');
-        return res.json();
-      })
+  headers: { 'auth-token': getToken() }
+})
+  .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
           setKhatas(data);
@@ -104,10 +101,19 @@ function AuctionEntry() {
       if (response.status === 401) return handleSessionExpire();
 
       if (response.ok) {
-        setStatus('✅ Parchi Save ho gayi!');
+        // ✅ BUG FIX: Backend se real PRC-XXXX number lo
+        const responseData = await response.json();
+        const realParchaNo = responseData.data?.parchaNo || 'N/A';
+        
+        // Ref ko turant update karo (print ke liye - state ka wait nahi)
+        confirmedParchaNoRef.current = realParchaNo;
+        setParchaNumber(realParchaNo);
+        
+        setStatus('✅ Parchi Save ho gayi! #' + realParchaNo);
         
         if (printFlagRef.current) {
-          window.print();
+          // ✅ Thoda wait karo taake React print view re-render kar sake
+          setTimeout(() => window.print(), 150);
         }
 
         setTimeout(() => {
@@ -120,14 +126,16 @@ function AuctionEntry() {
           setDamiPercent('');
           setMarketFeePercent('');
           setStatus('');
-          setParchaNumber(Math.floor(100000 + Math.random() * 900000)); // Nayi parchi ke liye naya number
+          // ✅ Reset: nayi parchi ke liye wapis '---' kar do
+          setParchaNumber('---');
+          confirmedParchaNoRef.current = '---';
           
           if (khatas.length > 0) {
             setKhataCategory(khatas[0].name);
           } else {
             setKhataCategory('');
           }
-        }, 1000);
+        }, 1500);
 
       } else {
         const errorData = await response.json();
@@ -300,8 +308,8 @@ function AuctionEntry() {
 
           <div className="d-flex justify-content-between mb-3 fs-5">
               <div><b>بل بنام:</b> <u style={{ fontFamily: 'Arial', marginRight: '10px' }}>{farmerName || '................'} ({khataCategory})</u></div>
-              {/* ✅ FIX 1: Parcha number yahan show hoga */}
-              <div dir="ltr"><span className="urdu-text fw-bold">نمبر:</span> <b style={{ fontFamily: 'Arial' }}>{parchaNumber}</b></div>
+              {/* ✅ BUG FIX: Ref use karo - backend wala REAL number (PRC-1001) print hoga */}
+              <div dir="ltr"><span className="urdu-text fw-bold">نمبر:</span> <b style={{ fontFamily: 'Arial' }}>{confirmedParchaNoRef.current}</b></div>
               <div><b>تاریخ:</b> <u style={{ fontFamily: 'Arial', marginRight: '10px' }}>{currentDate}</u></div>
           </div>
 
