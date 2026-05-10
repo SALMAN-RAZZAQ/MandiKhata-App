@@ -1,12 +1,23 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose'); // ✅ FIX: Mongoose import kiya
 const Rokar = require('../models/Rokar'); 
 const Party = require('../models/Party');
 const Transaction = require('../models/Transaction'); 
 const fetchUser = require('../middleware/fetchUser');
 const adminOnly = require('../middleware/adminOnly');
 
-// Pakistan Time ke mutabiq aaj ki tareekh (Format: DD/MM/YYYY)
+const Counter = require('../models/Counter');
+
+const getNextSequenceValue = async (sequenceName) => {
+  const sequenceDocument = await Counter.findOneAndUpdate(
+    { name: sequenceName },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  return sequenceDocument.seq;
+};
+
 const getTodayDate = () => {
   const d = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Karachi"}));
   const day = String(d.getDate()).padStart(2, '0');
@@ -34,7 +45,6 @@ router.get('/today', fetchUser, async (req, res) => {
       await aajKiRokar.save();
     }
     
-    // BUG FIX: Transaction table se data uthane ke liye Date Range (Kyunke wahan Date object save hota hai)
     const d = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Karachi"}));
     const startOfDay = new Date(d.setHours(0, 0, 0, 0));
     const endOfDay = new Date(d.setHours(23, 59, 59, 999));
@@ -51,22 +61,32 @@ router.get('/today', fetchUser, async (req, res) => {
   }
 });
 
-// Route 2: Nayi entry daalna (Sirf Transaction table mein)
+// Route 2: Nayi entry daalna (✅ SECURED WITH TRANSACTION)
 router.post('/add-entry', fetchUser, async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { partyName, description, amount, type, category } = req.body;
-    const todayDate = getTodayDate();
-    const refId = 'ROK-' + Math.floor(100000 + Math.random() * 900000);
-
-    let aajKiRokar = await Rokar.findOne({ date: todayDate });
-    if (!aajKiRokar || aajKiRokar.isClosed) {
-      return res.status(400).json({ message: "Aaj ki Rokar abhi khuli nahi hai ya band ho chuki hai!" });
+    
+    // ✅ FIX: Minus (-) ya Zero (0) amount ko block kiya
+    if (Number(amount) <= 0) {
+      throw new Error("❌ Raqam hamesha zero (0) se badi honi chahiye!");
     }
 
-    // Sirf ek Transaction banayen!
+    const todayDate = getTodayDate();
+    
+    const nextSeq = await getNextSequenceValue('rokar');
+    const refId = 'ROK-' + nextSeq;
+
+    let aajKiRokar = await Rokar.findOne({ date: todayDate }).session(session);
+    if (!aajKiRokar || aajKiRokar.isClosed) {
+      throw new Error("Aaj ki Rokar abhi khuli nahi hai ya band ho chuki hai!");
+    }
+
     const newTransaction = new Transaction({
         voucherNo: refId,
-        date: Date.now(), // BUG FIX: Yahan Date.now() aayega taake standard waqt save ho
+        date: Date.now(), 
         transactionType: category || 'General',
         partyName: partyName || 'Cash / General',
         debit: type === 'Naam' ? Number(amount) : 0,
@@ -74,54 +94,48 @@ router.post('/add-entry', fetchUser, async (req, res) => {
         details: description
     });
     
-    // Agar party hai toh uski ID bhi dhond kar dalen
     if (partyName && partyName !== 'Cash / General') {
-        const partyKhata = await Party.findOne({ name: partyName });
+        const partyKhata = await Party.findOne({ name: partyName }).session(session);
         if(partyKhata) {
             newTransaction.partyId = partyKhata._id;
             newTransaction.khataCategory = partyKhata.partyType;
             
-            // Party ka balance update
-    if (type === 'Jama') partyKhata.currentBalance += Number(amount);
-    if (type === 'Naam') partyKhata.currentBalance -= Number(amount);
-             partyKhata.balanceType = partyKhata.currentBalance >= 0 ? 'Jama' : 'Naam';
+            if (type === 'Jama') partyKhata.currentBalance += Number(amount);
+            if (type === 'Naam') partyKhata.currentBalance -= Number(amount);
+            partyKhata.balanceType = partyKhata.currentBalance >= 0 ? 'Jama' : 'Naam';
 
-              await partyKhata.save(); 
+            await partyKhata.save({ session }); 
         }
     }
 
-    await newTransaction.save(); // Parchi save ho gayi!
+    await newTransaction.save({ session }); 
 
-    // Rokar ka balance update
     if (type === 'Jama') aajKiRokar.closingBalance += Number(amount);
     if (type === 'Naam') aajKiRokar.closingBalance -= Number(amount);
-    await aajKiRokar.save(); 
+    await aajKiRokar.save({ session }); 
+
+    await session.commitTransaction();
+    session.endSession();
 
     res.json({ message: "Entry successfully add ho gayi", transaction: newTransaction });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error("Entry add karne mein masla:", error);
-    res.status(500).json({ error: 'Server Error' });
+    res.status(500).json({ error: error.message || 'Server Error' });
   }
 });
 
 // Route 3: Party ka Pakka Khata
 router.get('/khata/:name', fetchUser, async (req, res) => {
   try {
-    // ✅ BUG FIX #3: trim() lagao aur case-insensitive regex use karo
     const searchName = req.params.name.trim();
     const regexQuery = { $regex: new RegExp('^\\s*' + searchName + '\\s*$', 'i') };
 
     const party = await Party.findOne({ name: regexQuery });
-    if (!party) {
-      return res.status(404).json({ message: "Is naam ka koi khata nahi mila!" });
-    }
+    if (!party) return res.status(404).json({ message: "Is naam ka koi khata nahi mila!" });
 
-    // ✅ BUG FIX #3: Transaction search bhi party ke exact saved name se karo
-    // (Database mein jo naam save hai, usi se dhoondein - search input se nahi)
-    const history = await Transaction.find({ 
-      partyName: party.name  // party.name = database ka sahi naam
-    }).sort({ createdAt: -1 });
-    
+    const history = await Transaction.find({ partyName: party.name }).sort({ createdAt: -1 });
     const partyData = party.toObject();
     partyData.transactions = history;
     
@@ -132,44 +146,50 @@ router.get('/khata/:name', fetchUser, async (req, res) => {
   }
 });
 
-// Route 4: Entry Delete
+// Route 4: Entry Delete (✅ SECURED WITH TRANSACTION)
 router.delete('/delete-entry/:rokarId/:transactionId', fetchUser, adminOnly, async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { rokarId, transactionId } = req.params;
 
-    const rokar = await Rokar.findById(rokarId);
-    if (!rokar) return res.status(404).json({ error: 'Rokar nahi mili!' });
+    const rokar = await Rokar.findById(rokarId).session(session);
+    if (!rokar) throw new Error('Rokar nahi mili!');
 
-    const entry = await Transaction.findById(transactionId);
-    if (!entry) return res.status(404).json({ error: 'Entry nahi mili!' });
+    const entry = await Transaction.findById(transactionId).session(session);
+    if (!entry) throw new Error('Entry nahi mili!');
 
     const type = entry.credit > 0 ? 'Jama' : 'Naam';
     const amount = entry.credit > 0 ? entry.credit : entry.debit;
 
-    // ✅ Sirf Rokar balance reverse karo — party wali line hatayi
     if (type === 'Jama') rokar.closingBalance -= amount;
     else if (type === 'Naam') rokar.closingBalance += amount;
-    await rokar.save();
+    await rokar.save({ session });
 
-    // ✅ Party balance reverse karo — sahi jagah par
     if (entry.partyName && entry.partyName !== 'Cash / General') {
-      const party = await Party.findOne({ name: entry.partyName });
+      const party = await Party.findOne({ name: entry.partyName }).session(session);
       if (party) {
         if (type === 'Jama') party.currentBalance -= amount;
         if (type === 'Naam') party.currentBalance += amount;
-        party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam'; // ✅ Sahi jagah
-        await party.save();
+        party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam'; 
+        await party.save({ session });
       }
     }
 
-    await entry.deleteOne();
+    await entry.deleteOne({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
     res.status(200).json({ message: 'Entry delete aur balance reverse ho gaya!' });
 
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error("Entry delete mein masla:", error);
-    res.status(500).json({ error: 'Entry delete nahi ho saki.' });
+    res.status(500).json({ error: error.message || 'Entry delete nahi ho saki.' });
   }
 });
 
 module.exports = router;
-

@@ -24,12 +24,14 @@ function Navbar() {
             <Link to="/dashboard" style={linkStyle}>📊 Dashboard</Link>
             {/* ✅ FIX: Settings ab sirf Admin ko dikhega */}
             <Link to="/settings" style={linkStyle}>⚙️ Settings</Link> 
+            <Link to="/reports">Reports</Link>
           </>
         )}
 
         {/* YEH BUTTONS DONO (ADMIN AUR MUNSHI) KO DIKHENGE */}
         <Link to="/pakka-khata" style={linkStyle}>📒 Pakka Khata</Link>
         <Link to="/auction" style={linkStyle}>📝 Naya Parcha</Link>
+        <Link to="/all-parties">Saari Parties</Link>
         
         {/* ✅ NAYA: Journal Voucher */}
         <Link to="/journal-voucher" style={{...linkStyle, color: '#c084fc'}}>📒 Journal</Link>
@@ -39,6 +41,7 @@ function Navbar() {
           💰 روکڑ (Rokar)
         </Link>
         <Link to="/parta-bill" style={linkStyle}>📋 Parta Bill</Link>
+        <Link to="/parta-history">Purane Bills</Link>
         
         <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' }}>
           🔒 Logout

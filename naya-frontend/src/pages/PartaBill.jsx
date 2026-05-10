@@ -24,10 +24,13 @@ function PartaBill() {
   const navigate = useNavigate();
   const getToken = () => localStorage.getItem('token');
 
+  // ✅ FIX: alert() ki jagah setStatus lagaya aur auto-redirect laga diya
   const handleSessionExpire = () => {
-    alert("Aapka session expire ho gaya hai. Dobara login karein!");
-    localStorage.clear();
-    navigate('/login');
+    setStatus("❌ Aapka session expire ho gaya hai. Dobara login kar rahe hain...");
+    setTimeout(() => {
+      localStorage.clear();
+      navigate('/login');
+    }, 2000);
   };
 
   // Khata Groups load karo
@@ -35,14 +38,14 @@ function PartaBill() {
     fetch('/api/parcha/khatagroup/all', {
       headers: { 'auth-token': getToken() }
     })
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setKhatas(data);
-          setKhataCategory(data[0].name);
-        }
-      })
-      .catch(err => console.error('Khata load error:', err));
+    .then(res => res.json())
+    .then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        setKhatas(data);
+        setKhataCategory(data[0].name);
+      }
+    })
+    .catch(err => console.error('Khata load error:', err));
   }, []);
 
   // =========================================
@@ -65,8 +68,13 @@ function PartaBill() {
     setItems([...items, { cropType: '', weight: '', rate: '', amount: 0 }]);
   };
 
+  // ✅ FIX: alert() ki jagah setStatus lagaya jo 3 second baad ghayab ho jayega
   const removeItem = (index) => {
-    if (items.length === 1) return alert('Kam az kam ek fasal zaroori hai!');
+    if (items.length === 1) {
+      setStatus('❌ Kam az kam ek fasal zaroori hai!');
+      setTimeout(() => setStatus(''), 3000); // 3 second baad message saaf
+      return;
+    }
     const updatedItems = items.filter((_, i) => i !== index);
     setItems(updatedItems);
   };
@@ -78,9 +86,9 @@ function PartaBill() {
   const commAmount = grossAmount * ((Number(commPercent) || 0) / 100);
   const damiAmount = grossAmount * ((Number(damiPercent) || 0) / 100);
   const totalDeductions = commAmount +
-    (Number(mazdooriAmount) || 0) +
-    (Number(marketFeeAmount) || 0) +
-    damiAmount;
+  (Number(mazdooriAmount) || 0) +
+  (Number(marketFeeAmount) || 0) +
+  damiAmount;
   const netAmount = grossAmount - totalDeductions;
 
   // =========================================
@@ -93,7 +101,9 @@ function PartaBill() {
     // Items validate karo
     for (let i = 0; i < items.length; i++) {
       if (!items[i].cropType || !items[i].weight || !items[i].rate) {
-        return setStatus(`❌ Item ${i + 1} mein cropType, weight aur rate zaroori hain!`);
+        setStatus(`❌ Item ${i + 1} mein cropType, weight aur rate zaroori hain!`);
+        setTimeout(() => setStatus(''), 4000);
+        return;
       }
     }
 
@@ -117,7 +127,6 @@ function PartaBill() {
           commAmount,
           mazdooriAmount: Number(mazdooriAmount) || 0,
           marketFeeAmount: Number(marketFeeAmount) || 0,
-          // ✅ FIX: adaigiAmount ko nikal kar damiPercent aur damiAmount backend ko bhej diya
           damiPercent: Number(damiPercent) || 0,
           damiAmount: damiAmount,
           details
@@ -144,7 +153,7 @@ function PartaBill() {
           setCommPercent('');
           setMazdooriAmount('');
           setMarketFeeAmount('');
-          setDamiPercent(''); // ✅ FIX: setAdaigiAmount('') ko setDamiPercent('') se badal diya
+          setDamiPercent('');
           setDetails('');
           setStatus('');
           setSavedPartaNo('');

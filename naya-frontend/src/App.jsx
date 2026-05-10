@@ -7,8 +7,13 @@ import KhataSettings from './pages/KhataSettings';
 import AuctionEntry from './pages/AuctionEntry';
 import Rokar from './pages/Rokar';
 import Login from './pages/Login';
-import JournalVoucher from './pages/JournalVoucher'; // ✅ NAYA
+import JournalVoucher from './pages/JournalVoucher'; 
 import PartaBill from './pages/PartaBill';
+import Reports from './pages/Reports'; // ✅ NAYA: Reports page yahan import kiya hai
+import PartaHistory from './pages/PartaHistory';
+import ParchaHistory from './pages/ParchaHistory';
+import AllParties from './pages/AllParties';
+import Inventory from './pages/Inventory';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const role = localStorage.getItem('role');
@@ -80,6 +85,16 @@ const MainLayout = () => {
           } 
         />
 
+        {/* ✅ NAYA: REPORTS PAGE - SIRF ADMIN (SETH) KE LIYE */}
+        <Route 
+          path="/reports" 
+          element={
+            <ProtectedRoute allowedRoles={['Admin']}>
+              <Reports />
+            </ProtectedRoute>
+          } 
+        />
+
         {/* ROKAR (CASH DRAWER) - ADMIN & MUNSHI DONO KE LIYE */}
         <Route 
           path="/rokar" 
@@ -89,14 +104,24 @@ const MainLayout = () => {
             </ProtectedRoute>
           } 
         />
+        {/* PARTA BILL HISTORY - ADMIN & MUNSHI DONO KE LIYE */}
+        <Route 
+          path="/parta-history" 
+          element={
+            <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
+              <PartaHistory />
+            </ProtectedRoute>
+          } 
+        />
+        
         {/* parta route*/}
-       <Route path="/parta-bill" element={
+        <Route path="/parta-bill" element={
           <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
-          <PartaBill />
-           </ProtectedRoute>
-              } />
+            <PartaBill />
+          </ProtectedRoute>
+        } />
 
-        {/* ✅ NAYA: JOURNAL VOUCHER - ADMIN & MUNSHI DONO KE LIYE */}
+        {/* JOURNAL VOUCHER - ADMIN & MUNSHI DONO KE LIYE */}
         <Route 
           path="/journal-voucher" 
           element={
@@ -105,6 +130,24 @@ const MainLayout = () => {
             </ProtectedRoute>
           } 
         />
+        {/* ALL PARTIES LIST - ADMIN & MUNSHI DONO KE LIYE */}
+<Route 
+  path="/all-parties" 
+  element={
+    <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
+      <AllParties />
+    </ProtectedRoute>
+  } 
+/>
+        {/* MAAL INVENTORY - ADMIN & MUNSHI DONO KE LIYE */}
+<Route 
+  path="/inventory" 
+  element={
+    <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
+      <Inventory />
+    </ProtectedRoute>
+  } 
+/>
       </Routes>
     </>
   );
@@ -122,4 +165,3 @@ function App() {
 }
 
 export default App;
-
