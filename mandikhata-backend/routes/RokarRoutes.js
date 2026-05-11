@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const mongoose = require('mongoose'); // ✅ FIX: Mongoose import kiya
+const mongoose = require('mongoose'); 
 const Rokar = require('../models/Rokar'); 
 const Party = require('../models/Party');
 const Transaction = require('../models/Transaction'); 
@@ -61,7 +61,7 @@ router.get('/today', fetchUser, async (req, res) => {
   }
 });
 
-// Route 2: Nayi entry daalna (✅ SECURED WITH TRANSACTION)
+// Route 2: Nayi entry daalna 
 router.post('/add-entry', fetchUser, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -69,13 +69,11 @@ router.post('/add-entry', fetchUser, async (req, res) => {
   try {
     const { partyName, description, amount, type, category } = req.body;
     
-    // ✅ FIX: Minus (-) ya Zero (0) amount ko block kiya
     if (Number(amount) <= 0) {
       throw new Error("❌ Raqam hamesha zero (0) se badi honi chahiye!");
     }
 
     const todayDate = getTodayDate();
-    
     const nextSeq = await getNextSequenceValue('rokar');
     const refId = 'ROK-' + nextSeq;
 
@@ -121,7 +119,6 @@ router.post('/add-entry', fetchUser, async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.error("Entry add karne mein masla:", error);
     res.status(500).json({ error: error.message || 'Server Error' });
   }
 });
@@ -141,12 +138,11 @@ router.get('/khata/:name', fetchUser, async (req, res) => {
     
     res.json(partyData);
   } catch (error) {
-    console.error("Khata load karne mein masla:", error);
     res.status(500).json({ error: 'Server Error' });
   }
 });
 
-// Route 4: Entry Delete (✅ SECURED WITH TRANSACTION)
+// Route 4: Entry Delete (✅ BUG FIX: Sirf ROK- entries allow ki hain)
 router.delete('/delete-entry/:rokarId/:transactionId', fetchUser, adminOnly, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -154,11 +150,16 @@ router.delete('/delete-entry/:rokarId/:transactionId', fetchUser, adminOnly, asy
   try {
     const { rokarId, transactionId } = req.params;
 
-    const rokar = await Rokar.findById(rokarId).session(session);
-    if (!rokar) throw new Error('Rokar nahi mili!');
-
     const entry = await Transaction.findById(transactionId).session(session);
     if (!entry) throw new Error('Entry nahi mili!');
+
+    // ✅ YAHAN HAI ASAL FIX: Rokar page se sirf Cash entries delete hongi!
+    if (!entry.voucherNo || !entry.voucherNo.startsWith('ROK-')) {
+      throw new Error("❌ Yeh Parcha ya Bill ki entry hai! Isay Rokar se delete nahi kar sakte. Isay History page se ja kar delete karein.");
+    }
+
+    const rokar = await Rokar.findById(rokarId).session(session);
+    if (!rokar) throw new Error('Rokar nahi mili!');
 
     const type = entry.credit > 0 ? 'Jama' : 'Naam';
     const amount = entry.credit > 0 ? entry.credit : entry.debit;
@@ -187,8 +188,24 @@ router.delete('/delete-entry/:rokarId/:transactionId', fetchUser, adminOnly, asy
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.error("Entry delete mein masla:", error);
     res.status(500).json({ error: error.message || 'Entry delete nahi ho saki.' });
+  }
+});
+
+// Route 5: Aaj ki Rokar ko Lock (Close) karna
+router.put('/close', fetchUser, adminOnly, async (req, res) => {
+  try {
+    const todayDate = getTodayDate();
+    const aajKiRokar = await Rokar.findOne({ date: todayDate });
+    if (!aajKiRokar) return res.status(404).json({ error: "Aaj ki Rokar abhi khuli hi nahi." });
+    if (aajKiRokar.isClosed) return res.status(400).json({ error: "Rokar pehle se band hai!" });
+
+    aajKiRokar.isClosed = true;
+    await aajKiRokar.save();
+
+    res.json({ message: "🔒 Aaj ki Rokar band (Lock) kar di gayi hai. Ab isme mazeed entry nahi ho sakti." });
+  } catch (error) {
+    res.status(500).json({ error: "Rokar lock nahi ho saki." });
   }
 });
 

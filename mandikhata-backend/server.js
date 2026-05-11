@@ -22,6 +22,8 @@ app.use('/api/rokar',  require('./routes/RokarRoutes'));
 app.use('/api/parta', require('./routes/PartaRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/inventory', require('./routes/inventoryRoutes'));
+// 👇 Naya Crop Route 👇
+app.use('/api/crops', require('./routes/cropRoutes'));
 
 // ✅ MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)

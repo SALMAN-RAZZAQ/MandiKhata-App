@@ -1,52 +1,28 @@
 const mongoose = require('mongoose');
 
-// ======================================
-// Har fasal ki alag entry ka schema
-// ======================================
-const partaItemSchema = new mongoose.Schema({
-  cropType: { type: String, required: true },  // Gandum, Sarson etc
-  weight:   { type: Number, required: true },  // Wazan (Maund/KG)
-  rate:     { type: Number, required: true },  // Per unit rate
-  amount:   { type: Number, required: true },  // weight * rate
-}, { _id: false });
-
-// ======================================
-// Parta Bill ka main schema
-// ======================================
-const partaBillSchema = new mongoose.Schema({
-
-  // Bill Number (PRT-1001, PRT-1002...)
+const PartaBillSchema = new mongoose.Schema({
   partaNo: { type: String, required: true, unique: true },
-
-  // Kis customer ka bill hai
-  customerName:  { type: String, required: true, trim: true },
-  khataCategory: { type: String, default: 'Kisan' },
-
-  // Party reference — ✅ default: null add kiya
-  partyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Party', default: null },
-
-  // Multiple Faslen
-  items: {
-    type: [partaItemSchema],
-    required: true,
-    validate: {
-      validator: (arr) => arr.length > 0,
-      message: 'Kam az kam ek fasal zaroori hai!'
-    }
-  },
-
-  // Hisaab Kitab
-  grossAmount:     { type: Number, default: 0 },
-  commPercent:     { type: Number, default: 0 },
-  commAmount:      { type: Number, default: 0 },
-  mazdooriAmount:  { type: Number, default: 0 },
+  transactionType: { type: String, default: 'Baich_Kharidar' }, // ✅ NAYA: Khareed ya Baich
+  customerName: { type: String, required: true },
+  khataCategory: { type: String },
+  partyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Party' },
+  items: [{
+    cropType: String,
+    weight: Number,
+    rate: Number,
+    amount: Number
+  }],
+  grossAmount: { type: Number, default: 0 },
+  commPercent: { type: Number, default: 0 },
+  commAmount: { type: Number, default: 0 },
+  mazdooriAmount: { type: Number, default: 0 },
   marketFeeAmount: { type: Number, default: 0 },
-  damiPercent:     { type: Number, default: 0 },
-  damiAmount:      { type: Number, default: 0 },
+  damiPercent: { type: Number, default: 0 },
+  damiAmount: { type: Number, default: 0 },
   totalDeductions: { type: Number, default: 0 },
-  netAmount:       { type: Number, required: true },
-  details:         { type: String, default: '' }
+  netAmount: { type: Number, default: 0 },
+  details: { type: String },
+  createdAt: { type: Date, default: Date.now }
+});
 
-}, { timestamps: true });
-
-module.exports = mongoose.model('PartaBill', partaBillSchema);
+module.exports = mongoose.model('PartaBill', PartaBillSchema);

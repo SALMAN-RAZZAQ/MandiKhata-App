@@ -103,14 +103,13 @@ function Rokar() {
     }
   };
 
-  // ✅ NAYA: Entry Delete karne ka function (Backend API call karega)
+  // Entry Delete karne ka function
   const handleDeleteEntry = async (transactionId) => {
     const isConfirm = window.confirm("⚠️ Kya aap waqai yeh entry delete karna chahte hain? (Galla aur Party ka balance automatically reverse ho jayega)");
     
     if (isConfirm) {
       try {
         const token = localStorage.getItem('token');
-        // Rokar ID aur Transaction ID dono bhejni hain
         const response = await fetch(`/api/rokar/delete-entry/${data.rokar._id}/${transactionId}`, {
           method: 'DELETE',
           headers: {
@@ -128,10 +127,37 @@ function Rokar() {
 
         if (response.ok) {
           alert("✅ Entry kamyabi se delete ho gayi aur balance theek ho gaya!");
-          fetchRokar(); // Data refresh karo taake naya galla nazar aaye
+          fetchRokar(); 
         } else {
           const errorData = await response.json();
           alert(`❌ Masla aaya: ${errorData.error}`);
+        }
+      } catch (error) {
+        alert("❌ Network Error!");
+      }
+    }
+  };
+
+  // Rokar Lock karne ka function
+  const handleCloseRokar = async () => {
+    const isConfirm = window.confirm("⚠️ KYA AAP WAQAI AAJ KI ROKAR BAND KARNA CHAHTE HAIN? Iske baad aaj ki tareekh mein koi nayi entry ya delete nahi ho sakega!");
+    
+    if (isConfirm) {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`/api/rokar/close`, {
+          method: 'PUT',
+          headers: {
+            'auth-token': token
+          }
+        });
+
+        if (response.ok) {
+          alert("🔒 Aaj ki Rokar band kar di gayi hai!");
+          fetchRokar(); // Page refresh karo taake button gayab ho jayen
+        } else {
+          const err = await response.json();
+          alert(`❌ Masla aaya: ${err.error}`);
         }
       } catch (error) {
         alert("❌ Network Error!");
@@ -148,6 +174,7 @@ function Rokar() {
   }
 
   const { rokar, transactions } = data;
+  const isRokarClosed = rokar.isClosed;
 
   const totalJama = transactions.reduce((tot, t) => tot + (t.credit || 0), 0);
   const totalNaam = transactions.reduce((tot, t) => tot + (t.debit || 0), 0);
@@ -157,9 +184,16 @@ function Rokar() {
     <div className="container mt-4" style={{ fontFamily: 'Arial, sans-serif' }}>
       
       {/* Header */}
-      <div className="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
-        <h2 style={{ color: '#000080', fontWeight: 'bold' }}>💰 روزنامچہ / روکڑ (Daily Cashbook)</h2>
-        <h4 className="badge bg-dark fs-5">تاریخ: {rokar.date}</h4>
+      <div className="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2 flex-wrap gap-2">
+        <h2 style={{ color: '#000080', fontWeight: 'bold', margin: 0 }}>💰 روزنامچہ / روکڑ (Daily Cashbook)</h2>
+        <div className="d-flex align-items-center gap-3">
+          <h4 className="badge bg-dark fs-5 mb-0">تاریخ: {rokar.date}</h4>
+          {userRole === 'Admin' && !isRokarClosed && (
+            <button onClick={handleCloseRokar} className="btn btn-warning text-dark fw-bold shadow">
+              🔒 روکڑ بند کریں (Lock)
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 4 Bare Dabbay */}
@@ -198,18 +232,23 @@ function Rokar() {
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="d-flex gap-3 mb-4">
-        <button onClick={() => setEntryForm('Jama')} className="btn btn-success flex-fill fs-5 fw-bold shadow">
-          ➕ رقم جمع کریں (Cash IN)
-        </button>
-        <button onClick={() => setEntryForm('Naam')} className="btn btn-danger flex-fill fs-5 fw-bold shadow">
-          ➖ رقم ادا کریں (Cash OUT)
-        </button>
-      </div>
+      {isRokarClosed ? (
+        <div className="alert alert-danger text-center fw-bold fs-5 shadow-sm py-3 mb-4">
+          🔒 آج کی روکڑ بند (Lock) ہو چکی ہے۔ اب اس میں مزید کوئی انٹری یا تبدیلی نہیں کی جا سکتی!
+        </div>
+      ) : (
+        <div className="d-flex gap-3 mb-4">
+          <button onClick={() => setEntryForm('Jama')} className="btn btn-success flex-fill fs-5 fw-bold shadow">
+            ➕ رقم جمع کریں (Cash IN)
+          </button>
+          <button onClick={() => setEntryForm('Naam')} className="btn btn-danger flex-fill fs-5 fw-bold shadow">
+            ➖ رقم ادا کریں (Cash OUT)
+          </button>
+        </div>
+      )}
 
       {/* Nayi Entry Ka Form */}
-      {entryForm && (
+      {entryForm && !isRokarClosed && (
         <div className={`card shadow mb-4 border-${entryForm === 'Jama' ? 'success' : 'danger'}`}>
           <div className={`card-header text-white bg-${entryForm === 'Jama' ? 'success' : 'danger'} fw-bold fs-5`}>
             {entryForm === 'Jama' ? '🟢 نئی جمع درج کریں (New Cash IN)' : '🔴 نیا نام درج کریں (New Cash OUT)'}
@@ -263,14 +302,13 @@ function Rokar() {
               <th>کیٹیگری (Category)</th>
               <th>جمع (IN)</th>
               <th>نام (OUT)</th>
-              {/* ✅ NAYA: Action Column sirf Seth (Admin) ko dikhega */}
-              {userRole === 'Admin' && <th>ایکشن (Action)</th>}
+              {userRole === 'Admin' && !isRokarClosed && <th>ایکشن (Action)</th>}
             </tr>
           </thead>
           <tbody>
             {transactions.length === 0 ? (
               <tr>
-                <td colSpan={userRole === 'Admin' ? "8" : "7"} className="text-center text-muted py-4">آج ابھی تک کوئی لین دین نہیں ہوا۔ (No entries yet)</td>
+                <td colSpan={userRole === 'Admin' && !isRokarClosed ? "8" : "7"} className="text-center text-muted py-4">آج ابھی تک کوئی لین دین نہیں ہوا۔ (No entries yet)</td>
               </tr>
             ) : (
               [...transactions].map((t, index) => (
@@ -282,15 +320,20 @@ function Rokar() {
                   <td>{t.transactionType}</td>
                   <td className="text-success fw-bold">{t.credit > 0 ? `Rs. ${t.credit.toLocaleString()}` : '-'}</td>
                   <td className="text-danger fw-bold">{t.debit > 0 ? `Rs. ${t.debit.toLocaleString()}` : '-'}</td>
-                  {/* ✅ NAYA: Delete Button sirf Seth (Admin) ko dikhega */}
-                  {userRole === 'Admin' && (
+                  
+                  {/* ✅ NAYA: Delete Button sirf Seth (Admin) ko dikhega, aur sirf ROK- entries par */}
+                  {userRole === 'Admin' && !isRokarClosed && (
                     <td>
-                      <button 
-                        onClick={() => handleDeleteEntry(t._id)}
-                        className="btn btn-sm btn-danger fw-bold"
-                      >
-                        🗑️ Delete
-                      </button>
+                      {t.voucherNo && t.voucherNo.startsWith('ROK-') ? (
+                        <button 
+                          onClick={() => handleDeleteEntry(t._id)}
+                          className="btn btn-sm btn-danger fw-bold"
+                        >
+                          🗑️ Delete
+                        </button>
+                      ) : (
+                        <span className="badge bg-secondary text-light">🔒 History se Delete karein</span>
+                      )}
                     </td>
                   )}
                 </tr>

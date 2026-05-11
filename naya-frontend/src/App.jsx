@@ -139,6 +139,15 @@ const MainLayout = () => {
     </ProtectedRoute>
   } 
 />
+{/* PARCHA HISTORY - ADMIN & MUNSHI DONO KE LIYE */}
+<Route 
+  path="/parcha-history" 
+  element={
+    <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
+      <ParchaHistory />
+    </ProtectedRoute>
+  } 
+/>
         {/* MAAL INVENTORY - ADMIN & MUNSHI DONO KE LIYE */}
 <Route 
   path="/inventory" 

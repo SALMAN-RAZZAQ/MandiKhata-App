@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const PartaBill = require('../models/PartaBill');
 const Party = require('../models/Party');
 const Transaction = require('../models/Transaction');
-const Inventory = require('../models/Inventory'); // ✅ NAYA: Inventory Model add kiya
+const Inventory = require('../models/Inventory'); 
 const fetchUser = require('../middleware/fetchUser');
 const adminOnly = require('../middleware/adminOnly');
 
@@ -20,7 +20,7 @@ const getNextSequenceValue = async (sequenceName) => {
 };
 
 // =========================================
-// Route 1: Naya Parta Bill Banana (✅ INVENTORY UPDATE)
+// Route 1: Naya Parta Bill (✅ Khareed & Baich Logic)
 // =========================================
 router.post('/add', fetchUser, async (req, res) => {
   const session = await mongoose.startSession();
@@ -28,6 +28,7 @@ router.post('/add', fetchUser, async (req, res) => {
 
   try {
     const {
+      transactionType, // ✅ NAYA
       customerName, khataCategory, items,
       commPercent, commAmount, mazdooriAmount,
       marketFeeAmount, damiPercent, damiAmount, details
@@ -40,27 +41,42 @@ router.post('/add', fetchUser, async (req, res) => {
       if (Number(item.weight) < 0 || Number(item.rate) < 0 || Number(item.amount) < 0) {
          throw new Error("❌ Wazan, Rate ya Amount minus (-) mein nahi ho sakte!");
       }
-      
-      // ✅ NAYA: Har fasal par Inventory mein se maal Minus (-) karein
+
+      // ✅ STOCK LOGIC: Khareed par plus, Baich par minus
       let inventory = await Inventory.findOne({ cropName: item.cropType }).session(session);
-      if (!inventory) {
-        inventory = new Inventory({ cropName: item.cropType, totalWeight: 0 }); 
+      if (!inventory) inventory = new Inventory({ cropName: item.cropType, totalWeight: 0 }); 
+      
+      if (transactionType === 'Khareed_Kisan') {
+        inventory.totalWeight += Number(item.weight); // Maal godam mein aaya
+      } else {
+        inventory.totalWeight -= Number(item.weight); // Maal dukan se bika
       }
-      inventory.totalWeight -= Number(item.weight); // Stock minus ho raha hai
       await inventory.save({ session });
     }
 
     const grossAmount = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-    const totalDeductions = (Number(commAmount) || 0) + (Number(mazdooriAmount) || 0) + 
+    const totalExpenses = (Number(commAmount) || 0) + (Number(mazdooriAmount) || 0) + 
                            (Number(marketFeeAmount) || 0) + (Number(damiAmount) || 0);
-    const netAmount = grossAmount - totalDeductions;
+    
+    // ✅ BILL LOGIC: Baichne par Kharchay (Dami waghera) add honge, Khareedne par Minus honge
+    let netAmount = 0;
+    if (transactionType === 'Baich_Kharidar') {
+      netAmount = grossAmount + totalExpenses; 
+    } else {
+      netAmount = grossAmount - totalExpenses; 
+    }
 
     let party = await Party.findOne({ name: customerName }).session(session);
     if (!party) {
       party = new Party({ name: customerName, partyType: khataCategory || 'Kisan', currentBalance: 0 });
     }
 
-    party.currentBalance += netAmount;
+    // ✅ ACCOUNTING LOGIC: Baichne par party ne paise dene hain (Naam). Khareed par humne dene hain (Jama)
+    if (transactionType === 'Baich_Kharidar') {
+      party.currentBalance -= netAmount; 
+    } else {
+      party.currentBalance += netAmount; 
+    }
     party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam';
     await party.save({ session });
 
@@ -68,20 +84,19 @@ router.post('/add', fetchUser, async (req, res) => {
     const finalPartaNo = 'PRT-' + nextSeq;
 
     const newBill = new PartaBill({
-      partaNo: finalPartaNo, customerName, khataCategory: khataCategory || 'Kisan',
-      partyId: party._id, items, grossAmount,
-      commPercent: Number(commPercent) || 0, commAmount: Number(commAmount) || 0,
+      partaNo: finalPartaNo, transactionType, customerName, khataCategory: khataCategory || 'Kisan',
+      partyId: party._id, items, grossAmount, commPercent: Number(commPercent) || 0, commAmount: Number(commAmount) || 0,
       mazdooriAmount: Number(mazdooriAmount) || 0, marketFeeAmount: Number(marketFeeAmount) || 0,
       damiPercent: Number(damiPercent) || 0, damiAmount: Number(damiAmount) || 0,
-      totalDeductions, netAmount, details: details || ''
+      totalDeductions: totalExpenses, netAmount, details: details || ''
     });
     await newBill.save({ session });
 
     await new Transaction({
-      voucherNo: finalPartaNo, date: Date.now(),
-      transactionType: 'Parta Bill', khataCategory: khataCategory || 'Kisan',
-      partyId: party._id, partyName: customerName,
-      debit: 0, credit: netAmount,
+      voucherNo: finalPartaNo, date: Date.now(), transactionType: transactionType || 'Parta Bill',
+      khataCategory: khataCategory || 'Kisan', partyId: party._id, partyName: customerName,
+      debit: transactionType === 'Baich_Kharidar' ? netAmount : 0,
+      credit: transactionType !== 'Baich_Kharidar' ? netAmount : 0,
       details: `Parta Bill: ${finalPartaNo} — Items: ${items.length}`
     }).save({ session });
 
@@ -93,43 +108,31 @@ router.post('/add', fetchUser, async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.error(error);
     res.status(500).json({ error: error.message || 'Parta Bill save nahi ho saka.' });
   }
 });
 
-// =========================================
-// Route 2: Saare Parta Bills dekhna
-// =========================================
 router.get('/all', fetchUser, async (req, res) => {
   try {
     const { from, to, customerName } = req.query;
     let filter = {};
     if (from && to) filter.createdAt = { $gte: new Date(from), $lte: new Date(new Date(to).setHours(23, 59, 59, 999)) };
     if (customerName) filter.customerName = { $regex: new RegExp(customerName, 'i') };
-
     const bills = await PartaBill.find(filter).sort({ createdAt: -1 });
     res.status(200).json(bills);
-  } catch (error) {
-    res.status(500).json({ error: 'Bills load nahi ho sake.' });
-  }
+  } catch (error) { res.status(500).json({ error: 'Bills load nahi ho sake.' }); }
 });
 
-// =========================================
-// Route 3: Single Parta Bill dekhna
-// =========================================
 router.get('/:id', fetchUser, async (req, res) => {
   try {
     const bill = await PartaBill.findById(req.params.id);
     if (!bill) return res.status(404).json({ error: 'Bill nahi mila!' });
     res.status(200).json(bill);
-  } catch (error) {
-    res.status(500).json({ error: 'Bill load nahi ho saka.' });
-  }
+  } catch (error) { res.status(500).json({ error: 'Bill load nahi ho saka.' }); }
 });
 
 // =========================================
-// Route 4: Parta Bill Delete (✅ INVENTORY REVERSE)
+// Route 4: Parta Bill Delete (✅ Reverse Logic)
 // =========================================
 router.delete('/delete/:id', fetchUser, adminOnly, async (req, res) => {
   const session = await mongoose.startSession();
@@ -141,16 +144,23 @@ router.delete('/delete/:id', fetchUser, adminOnly, async (req, res) => {
 
     const party = await Party.findById(bill.partyId).session(session);
     if (party) {
-      party.currentBalance -= bill.netAmount;
+      if (bill.transactionType === 'Baich_Kharidar') {
+        party.currentBalance += bill.netAmount; // Reverse of Naam
+      } else {
+        party.currentBalance -= bill.netAmount; // Reverse of Jama
+      }
       party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam';
       await party.save({ session });
     }
 
-    // ✅ NAYA: Bill delete hua, toh Stock wapis aayega (Plus)
     for (let item of bill.items) {
       let inventory = await Inventory.findOne({ cropName: item.cropType }).session(session);
       if (inventory) {
-        inventory.totalWeight += Number(item.weight); // Stock wapis godown mein aa gaya
+        if (bill.transactionType === 'Baich_Kharidar') {
+          inventory.totalWeight += Number(item.weight); // Maal wapis godam mein
+        } else {
+          inventory.totalWeight -= Number(item.weight); // Maal godam se minus
+        }
         await inventory.save({ session });
       }
     }
@@ -161,11 +171,10 @@ router.delete('/delete/:id', fetchUser, adminOnly, async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    res.status(200).json({ message: 'Parta Bill delete ho gaya aur Stock wapis aa gaya!' });
+    res.status(200).json({ message: 'Parta Bill delete ho gaya aur hisaab theek ho gaya!' });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.error(error);
     res.status(500).json({ error: error.message || 'Delete failed.' });
   }
 });
