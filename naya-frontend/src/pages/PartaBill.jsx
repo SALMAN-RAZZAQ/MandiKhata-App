@@ -231,7 +231,7 @@ function PartaBill() {
                   {commPercent > 0 && <span>کمیشن ({commPercent}%): <span dir="ltr">{commAmount.toFixed(2)}</span><br /></span>}
                   {mazdooriAmount > 0 && <span>مزدوری: <span dir="ltr">{Number(mazdooriAmount).toFixed(2)}</span><br /></span>}
                   {marketFeeAmount > 0 && <span>مارکیٹ فیس: <span dir="ltr">{Number(marketFeeAmount).toFixed(2)}</span><br /></span>}
-                  {damiPercent > 0 && <span>ڈامی ({damiPercent}%): <span dir="ltr">{damiAmount.toFixed(2)}</span></span>}
+                  {damiPercent > 0 && <span>دامی({damiPercent}%): <span dir="ltr">{damiAmount.toFixed(2)}</span></span>}
                 </td>
                 <td className="urdu-text fw-bold border-dark">{isBaich ? 'کل خرچہ' : 'کل کٹوتی'}</td>
                 <td className="border-dark fw-bold" dir="ltr" style={{ color: isBaich ? '#000080' : '#dc3545' }}>

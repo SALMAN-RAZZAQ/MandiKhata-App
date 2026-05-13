@@ -273,8 +273,8 @@ function Rokar() {
                 <label className="fw-bold">کیٹیگری (Category):</label>
                 <select className="form-control" value={category} onChange={(e) => setCategory(e.target.value)}>
                   <option value="General">General</option>
-                  <option value="Kisan">Kisan</option>
-                  <option value="Kharidar">Kharidar</option>
+                  <option value="Wasoli">Wasoli</option>
+                  <option value="Adaigi">Adaigi</option>
                   <option value="Kharcha">Dukan Kharcha</option>
                 </select>
               </div>
