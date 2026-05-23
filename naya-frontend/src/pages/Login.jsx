@@ -29,9 +29,9 @@ function Login() {
         localStorage.setItem('username', data.username);
         
         if (data.role === 'Admin') {
-          navigate('/dashboard'); 
+          navigate('/Home'); 
         } else {
-          navigate('/auction'); 
+          navigate('/Home'); 
         }
       } else {
         setError('❌ ' + (data.message || 'Login mein masla hai!'));

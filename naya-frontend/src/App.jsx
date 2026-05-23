@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import PakkaKhata from './pages/PakkaKhata';
@@ -9,166 +9,97 @@ import Rokar from './pages/Rokar';
 import Login from './pages/Login';
 import JournalVoucher from './pages/JournalVoucher'; 
 import PartaBill from './pages/PartaBill';
-import Reports from './pages/Reports'; // ✅ NAYA: Reports page yahan import kiya hai
+import Reports from './pages/Reports'; 
 import PartaHistory from './pages/PartaHistory';
 import ParchaHistory from './pages/ParchaHistory';
 import AllParties from './pages/AllParties';
 import Inventory from './pages/Inventory';
+import Home from './components/Home'; 
 
-const ProtectedRoute = ({ children, allowedRoles }) => {
-  const role = localStorage.getItem('role');
-
-  if (!role) {
-    return <Navigate to="/login" />; 
-  }
-
-  if (allowedRoles && !allowedRoles.includes(role)) {
-    // Agar Munshi Admin wale page par jane ki koshish karega toh Auction par jayega
-    return <Navigate to="/auction" />; 
-  }
-
-  return children;
-};
-
-// ==========================================
-// Layout Component jo Routes aur Navbar ko control karega
-// ==========================================
-const MainLayout = () => {
-  const location = useLocation();
-
-  return (
-    <>
-      {/* Agar hum '/login' page par NAHI hain, sirf tabhi Navbar dikhao */}
-      {location.pathname !== '/login' && <Navbar />}
-      
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/" element={<Navigate to="/login" />} />
-
-        {/* MUNSHI & ADMIN DONO KE LIYE */}
-        <Route 
-          path="/auction" 
-          element={
-            <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
-              <AuctionEntry />
-            </ProtectedRoute>
-          } 
-        />
-
-        {/* ✅ THEEK KIYA: Settings sirf Admin (Seth) ke liye */}
-        <Route 
-          path="/settings" 
-          element={
-            <ProtectedRoute allowedRoles={['Admin']}>
-              <KhataSettings />
-            </ProtectedRoute>
-          } 
-        />
-
-        {/* ✅ THEEK KIYA: Pakka Khata ab Admin aur Munshi dono dekh sakte hain */}
-        <Route 
-          path="/pakka-khata" 
-          element={
-            <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
-              <PakkaKhata />
-            </ProtectedRoute>
-          } 
-        />
-
-        {/* SIRF ADMIN (SETH) KE LIYE */}
-        <Route 
-          path="/dashboard" 
-          element={
-            <ProtectedRoute allowedRoles={['Admin']}>
-              <Dashboard />
-            </ProtectedRoute>
-          } 
-        />
-
-        {/* ✅ NAYA: REPORTS PAGE - SIRF ADMIN (SETH) KE LIYE */}
-        <Route 
-          path="/reports" 
-          element={
-            <ProtectedRoute allowedRoles={['Admin']}>
-              <Reports />
-            </ProtectedRoute>
-          } 
-        />
-
-        {/* ROKAR (CASH DRAWER) - ADMIN & MUNSHI DONO KE LIYE */}
-        <Route 
-          path="/rokar" 
-          element={
-            <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
-              <Rokar />
-            </ProtectedRoute>
-          } 
-        />
-        {/* PARTA BILL HISTORY - ADMIN & MUNSHI DONO KE LIYE */}
-        <Route 
-          path="/parta-history" 
-          element={
-            <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
-              <PartaHistory />
-            </ProtectedRoute>
-          } 
-        />
-        
-        {/* parta route*/}
-        <Route path="/parta-bill" element={
-          <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
-            <PartaBill />
-          </ProtectedRoute>
-        } />
-
-        {/* JOURNAL VOUCHER - ADMIN & MUNSHI DONO KE LIYE */}
-        <Route 
-          path="/journal-voucher" 
-          element={
-            <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
-              <JournalVoucher />
-            </ProtectedRoute>
-          } 
-        />
-        {/* ALL PARTIES LIST - ADMIN & MUNSHI DONO KE LIYE */}
-<Route 
-  path="/all-parties" 
-  element={
-    <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
-      <AllParties />
-    </ProtectedRoute>
-  } 
-/>
-{/* PARCHA HISTORY - ADMIN & MUNSHI DONO KE LIYE */}
-<Route 
-  path="/parcha-history" 
-  element={
-    <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
-      <ParchaHistory />
-    </ProtectedRoute>
-  } 
-/>
-        {/* MAAL INVENTORY - ADMIN & MUNSHI DONO KE LIYE */}
-<Route 
-  path="/inventory" 
-  element={
-    <ProtectedRoute allowedRoles={['Admin', 'Munshi']}>
-      <Inventory />
-    </ProtectedRoute>
-  } 
-/>
-      </Routes>
-    </>
-  );
-};
-
-// ==========================================
-// ASAL APP FUNCTION
-// ==========================================
 function App() {
+  const isAuthenticated = () => !!localStorage.getItem('token');
+  
+  // 🌟 NAYA: Screen aur Sidebar ki state sambhalne ke liye
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      if (mobile) {
+        setIsSidebarOpen(false); // Mobile par default band
+      } else {
+        setIsSidebarOpen(true); // Desktop par default khula
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
   return (
     <Router>
-      <MainLayout />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        
+        <Route path="/*" element={
+          isAuthenticated() ? (
+            // 🌟 NAYA: Naya App Container jo display flex use karta hai
+            <div className="app-container">
+              
+              {/* Left Sidebar */}
+              <Navbar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} isMobile={isMobile} />
+              
+              {/* Mobile par background parda (Overlay) */}
+              {isMobile && (
+                <div 
+                  className={`sidebar-overlay ${isSidebarOpen ? 'open' : ''}`} 
+                  onClick={() => setIsSidebarOpen(false)}
+                ></div>
+              )}
+              
+              {/* Right Side Main Content */}
+              <div className="main-content">
+                
+                {/* 🌟 CHOTA SA HEADER (Toggle Button ke liye) */}
+                <div style={{ padding: '10px 20px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center' }}>
+                  
+                 <button className="toggle-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+                  ☰
+                 </button>
+                  <h4 style={{ margin: '0 0 0 15px', color: '#042e12', fontWeight: 'bold' }}>
+                    🌾 Mandi Khata
+                  </h4>
+                </div>
+
+                {/* Yahan saare pages load honge (Scrollable Area) */}
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  <Routes>
+                    <Route path="/home" element={<Home />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/auction" element={<AuctionEntry />} />
+                    <Route path="/pakka-khata" element={<PakkaKhata />} />
+                    <Route path="/rokar" element={<Rokar />} />
+                    <Route path="/parta-bill" element={<PartaBill />} />
+                    <Route path="/journal-voucher" element={<JournalVoucher />} />
+                    <Route path="/all-parties" element={<AllParties />} />
+                    <Route path="/parcha-history" element={<ParchaHistory />} />
+                    <Route path="/parta-history" element={<PartaHistory />} />
+                    <Route path="/inventory" element={<Inventory />} />
+                    <Route path="/settings" element={<KhataSettings />} />
+                    <Route path="/reports" element={<Reports />} />
+                    
+                    <Route path="/" element={<Navigate to="/home" />} />
+                  </Routes>
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            <Navigate to="/login" />
+          )
+        } />
+      </Routes>
     </Router>
   );
 }

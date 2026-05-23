@@ -1,33 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Select from 'react-select'; // ✅ NAYA: High-performance dropdown
 
 function PakkaKhata() {
-  const [searchName, setSearchName] = useState('');
   const [partyData, setPartyData] = useState(null);
+  const [partyOptions, setPartyOptions] = useState([]);
+  const [selectedParty, setSelectedParty] = useState(null);
   const navigate = useNavigate();
+  const getToken = () => localStorage.getItem('token');
 
-  // NAYA: Search button dabane par backend se Party ka data mangwana
-  const searchKhata = async () => {
-    // ✅ BUG FIX #3: trim() - user ke type kiye extra spaces hataao
-    const trimmedName = searchName.trim();
-    if (!trimmedName) return alert("Pehle party ka naam likhein!");
+  // ✅ NAYA: Partiyan load karna
+  useEffect(() => {
+    const fetchParties = async () => {
+      try {
+        const response = await fetch('/api/parcha/parties/all', {
+          headers: { 'auth-token': getToken() }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          // Dropdown ke liye format: "1001 - Gaffar"
+          const formatted = data.map(p => ({
+            value: p.name,
+            label: `${p.khataIndex || 'N/A'} - ${p.name}`
+          }));
+          setPartyOptions(formatted);
+        }
+      } catch (error) {
+        console.error("Parties load nahi huin:", error);
+      }
+    };
+    fetchParties();
+  }, []);
+
+  // ✅ NAYA: Smart Search Function
+  const searchKhata = async (selectedOption) => {
+    if (!selectedOption) return;
+    
+    setSelectedParty(selectedOption);
+    const partyName = selectedOption.value;
     
     try {
-      const token = localStorage.getItem('token');
-      
-      // ✅ trimmedName bhejo - raw searchName nahi
-      const response = await fetch(`/api/rokar/khata/${encodeURIComponent(trimmedName)}`, {
+      const response = await fetch(`/api/rokar/khata/${encodeURIComponent(partyName)}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'auth-token': token 
+          'auth-token': getToken()
         }
       });
 
       if (response.status === 401) {
         alert("Aapka session expire ho gaya hai. Dobara login karein!");
-        localStorage.removeItem('token');
-        localStorage.removeItem('role');
+        localStorage.clear();
         navigate('/login');
         return;
       }
@@ -48,13 +71,11 @@ function PakkaKhata() {
 
   if (partyData && partyData.transactions) {
     partyData.transactions.forEach(item => {
-      // ✅ FIX: Naye backend fields use kiye hain
       totalJama += (item.credit || 0); 
       totalNaam += (item.debit || 0);  
     });
   }
 
-  // ✅ FIX: Asal Database wala currentBalance aur balanceType use kiya hai
   const netBalance = partyData ? partyData.currentBalance : 0;
   let balanceStatus = "";
   let balanceColor = "";
@@ -72,6 +93,19 @@ function PakkaKhata() {
     balanceColor = "#000080"; // Neela rang
   }
 
+  // React Select Style
+  const selectStyles = {
+    control: (base) => ({
+      ...base,
+      padding: '8px',
+      borderColor: '#000080',
+      borderWidth: '2px',
+      borderRadius: '5px',
+      boxShadow: 'none',
+      '&:hover': { borderColor: '#000080' }
+    })
+  };
+
   return (
     <div style={{ padding: '30px', fontFamily: 'Arial, sans-serif', maxWidth: '1000px', margin: '0 auto' }}>
       <h2 style={{ textAlign: 'center', color: '#000080' }}>📒 Pakka Khata (سنگل پارٹی لیجر)</h2>
@@ -80,20 +114,16 @@ function PakkaKhata() {
       {/* SEARCH BAR */}
       <div style={{ backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '8px', borderTop: '4px solid #198754', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
         <label style={{ fontWeight: 'bold', fontSize: '18px' }}>🔍 Party ka Naam Likhein:</label>
-        <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-          <input 
-            type="text" 
-            value={searchName}
-            onChange={(e) => setSearchName(e.target.value)}
-            placeholder="Misaal ke taur par: Arham" 
-            style={{ flex: 1, padding: '15px', fontSize: '18px', borderRadius: '5px', border: '2px solid #000080' }}
+        <div style={{ marginTop: '10px' }}>
+          <Select 
+            options={partyOptions}
+            value={selectedParty}
+            onChange={searchKhata}
+            placeholder="Misaal ke taur par: 1001 ya Gaffar..."
+            styles={selectStyles}
+            isSearchable
+            isClearable
           />
-          <button 
-            onClick={searchKhata} 
-            style={{ backgroundColor: '#000080', color: 'white', padding: '0 30px', fontSize: '18px', fontWeight: 'bold', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
-          >
-            تلاش کریں (Search)
-          </button>
         </div>
       </div>
 
@@ -121,17 +151,14 @@ function PakkaKhata() {
               ) : (
                 partyData.transactions.map((item, index) => (
                   <tr key={index} style={{ borderBottom: '1px solid #ddd' }}>
-                    {/* ✅ FIX: Date aur Naye Fields ko theek kiya */}
                     <td style={tdStyle}>{new Date(item.date).toLocaleDateString('en-GB')}</td>
                     <td style={{...tdStyle, color: '#000080', fontWeight: 'bold'}}>{item.voucherNo || '-'}</td>
                     <td style={{...tdStyle, textAlign: 'left'}}>{item.details}</td>
                     
-                    {/* Jama ka column (Credit) */}
                     <td style={{ ...tdStyle, fontWeight: 'bold', color: '#198754' }}>
                       {item.credit > 0 ? `Rs. ${item.credit.toLocaleString()}` : '-'}
                     </td>
                     
-                    {/* Naam ka column (Debit) */}
                     <td style={{ ...tdStyle, fontWeight: 'bold', color: '#dc3545' }}>
                       {item.debit > 0 ? `Rs. ${item.debit.toLocaleString()}` : '-'}
                     </td>
@@ -167,4 +194,3 @@ const thStyle = { padding: '12px', borderBottom: '2px solid #ddd' };
 const tdStyle = { padding: '12px' };
 
 export default PakkaKhata;
-

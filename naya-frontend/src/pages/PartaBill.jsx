@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+// ✅ NAYA: Searchable aur Creatable Dropdown ke liye
+import CreatableSelect from 'react-select/creatable';
 
 function PartaBill() {
   const [khatas, setKhatas] = useState([]);
   const [cropsList, setCropsList] = useState([]); 
   
+  // ✅ NAYA: Parties ki list aur selected party ki state
+  const [partyOptions, setPartyOptions] = useState([]);
+  const [selectedParty, setSelectedParty] = useState(null);
+
   const [transactionType, setTransactionType] = useState('Baich_Kharidar'); 
   const [customerName, setCustomerName] = useState('');
   const [khataCategory, setKhataCategory] = useState('');
@@ -14,7 +20,8 @@ function PartaBill() {
   const [items, setItems] = useState([{ cropType: '', weight: '', rate: '', amount: 0 }]);
 
   const [commPercent, setCommPercent] = useState('');
-  const [mazdooriAmount, setMazdooriAmount] = useState('');
+  // ✅ NAYA: Mazdoori ab percentage mein hai
+  const [mazdooriPercent, setMazdooriPercent] = useState('');
   const [marketFeeAmount, setMarketFeeAmount] = useState('');
   const [damiPercent, setDamiPercent] = useState('');
   const [details, setDetails] = useState('');
@@ -29,6 +36,7 @@ function PartaBill() {
   };
 
   useEffect(() => {
+    // 1. Fetch Khata Groups
     fetch('/api/parcha/khatagroup/all', { headers: { 'auth-token': getToken() } })
       .then(res => res.json())
       .then(data => {
@@ -38,11 +46,41 @@ function PartaBill() {
         }
       }).catch(err => console.error('Khata error:', err));
 
+    // 2. Fetch Crops
     fetch('/api/crops/all', { headers: { 'auth-token': getToken() } })
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setCropsList(data); })
       .catch(err => console.error('Crops error:', err));
+
+    // 🚀 3. Fetch Parties for Smart Dropdown
+    fetch('/api/parcha/parties/all', { headers: { 'auth-token': getToken() } })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const formatted = data.map(p => ({
+            value: p.name,
+            label: `${p.khataIndex || 'N/A'} - ${p.name}`,
+            partyType: p.partyType
+          }));
+          setPartyOptions(formatted);
+        }
+      })
+      .catch(err => console.error("Parties load error:", err));
   }, []);
+
+  // ✅ NAYA: Jab Munshi Party select kare ya naya naam likhay
+  const handlePartyChange = (newValue) => {
+    setSelectedParty(newValue);
+    if (newValue) {
+      setCustomerName(newValue.value);
+      // Agar purani party select ki hai toh uska Khata Group khud select karwao
+      if (newValue.partyType) {
+        setKhataCategory(newValue.partyType);
+      }
+    } else {
+      setCustomerName('');
+    }
+  };
 
   const handleItemChange = (index, field, value) => {
     const updatedItems = [...items];
@@ -65,12 +103,15 @@ function PartaBill() {
   const grossAmount = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   const commAmount = grossAmount * ((Number(commPercent) || 0) / 100);
   const damiAmount = grossAmount * ((Number(damiPercent) || 0) / 100);
-  const totalExpenses = commAmount + (Number(mazdooriAmount) || 0) + (Number(marketFeeAmount) || 0) + damiAmount;
+  // ✅ NAYA: Mazdoori ka calculation % ke hisaab se
+  const mazdooriAmount = grossAmount * ((Number(mazdooriPercent) || 0) / 100);
+  const totalExpenses = commAmount + mazdooriAmount + (Number(marketFeeAmount) || 0) + damiAmount;
   
   const netAmount = transactionType === 'Baich_Kharidar' ? grossAmount + totalExpenses : grossAmount - totalExpenses;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if(!customerName) return setStatus('❌ Party ka naam zaroori hai!');
     setStatus('⏳ Parta Bill save ho raha hai...');
 
     for (let i = 0; i < items.length; i++) {
@@ -90,7 +131,9 @@ function PartaBill() {
             cropType: item.cropType, weight: Number(item.weight), rate: Number(item.rate), amount: Number(item.amount)
           })),
           commPercent: Number(commPercent) || 0, commAmount,
-          mazdooriAmount: Number(mazdooriAmount) || 0, marketFeeAmount: Number(marketFeeAmount) || 0,
+          // ✅ NAYA: Backend ko sirf calculated amount jayegi (kyunke backend ko amount hi chahiye)
+          mazdooriAmount, 
+          marketFeeAmount: Number(marketFeeAmount) || 0,
           damiPercent: Number(damiPercent) || 0, damiAmount, details
         })
       });
@@ -108,9 +151,11 @@ function PartaBill() {
         }
 
         setTimeout(() => {
-          setCustomerName(''); setKhataCategory(khatas.length > 0 ? khatas[0].name : '');
+          setCustomerName(''); 
+          setSelectedParty(null); // Dropdown reset
+          setKhataCategory(khatas.length > 0 ? khatas[0].name : '');
           setItems([{ cropType: '', weight: '', rate: '', amount: 0 }]);
-          setCommPercent(''); setMazdooriAmount(''); setMarketFeeAmount(''); setDamiPercent('');
+          setCommPercent(''); setMazdooriPercent(''); setMarketFeeAmount(''); setDamiPercent('');
           setDetails(''); setStatus(''); setSavedPartaNo('');
         }, 2000);
       } else {
@@ -123,6 +168,18 @@ function PartaBill() {
   const currentDate = new Date().toLocaleDateString('en-GB');
   const isBaich = transactionType === 'Baich_Kharidar';
 
+  // React Select Styling to match inputs
+  const selectStyles = {
+    control: (base) => ({
+      ...base,
+      marginTop: '5px',
+      padding: '2px',
+      borderColor: '#ccc',
+      boxShadow: 'none',
+      '&:hover': { borderColor: '#000080' }
+    })
+  };
+
   return (
     <>
       <style>{`@media screen { .print-only { display: none !important; } } @media print { body * { visibility: hidden; } .print-only, .print-only * { visibility: visible; } .print-only { position: absolute; left: 0; top: 0; width: 100%; padding: 10px; } .screen-only { display: none !important; } }`}</style>
@@ -130,17 +187,42 @@ function PartaBill() {
         <div className="screen-only">
           <h2 style={{ color: '#000080', borderBottom: '2px solid #000080', paddingBottom: '10px' }}>📋 Naya Parta Bill</h2>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
+            
             <div style={{ display: 'flex', gap: '15px' }}>
-              <div style={{ flex: 1 }}><label><b>Bill Ki Qisam:</b></label><select value={transactionType} onChange={(e) => setTransactionType(e.target.value)} style={inputStyle}><option value="Baich_Kharidar">Kharidar ko Baicha (Sales + Dami)</option><option value="Khareed_Kisan">Kisan Se Khareeda (Purchase - Comm)</option></select></div>
+              <div style={{ flex: 1 }}>
+                <label><b>Bill Ki Qisam:</b></label>
+                <select value={transactionType} onChange={(e) => setTransactionType(e.target.value)} style={inputStyle}>
+                  <option value="Baich_Kharidar">Kharidar ko Baicha (Sales + Dami)</option>
+                  <option value="Khareed_Kisan">Kisan Se Khareeda (Purchase - Comm)</option>
+                </select>
+              </div>
             </div>
+
             <div style={{ display: 'flex', gap: '15px' }}>
-              <div style={{ flex: 1 }}><label><b>Party Ka Naam:</b></label><input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required placeholder="Naam likhein..." style={inputStyle} /></div>
-              <div style={{ flex: 1 }}><label><b>Khata Group:</b></label><select value={khataCategory} onChange={(e) => setKhataCategory(e.target.value)} style={inputStyle} required><option value="">Khata Select Karein...</option>{khatas.map(k => <option key={k._id} value={k.name}>{k.name}</option>)}</select></div>
+              <div style={{ flex: 1 }}>
+                <label><b>Party Ka Naam (Index ya Naam):</b></label>
+                <CreatableSelect 
+                  options={partyOptions}
+                  value={selectedParty}
+                  onChange={handlePartyChange}
+                  placeholder="1001 ya naam likhein..."
+                  styles={selectStyles}
+                  isClearable
+                  formatCreateLabel={(inputValue) => `Naya Khata: "${inputValue}"`}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label><b>Khata Group:</b></label>
+                <select value={khataCategory} onChange={(e) => setKhataCategory(e.target.value)} style={inputStyle} required>
+                  <option value="">Khata Select Karein...</option>
+                  {khatas.map(k => <option key={k._id} value={k.name}>{k.name}</option>)}
+                </select>
+              </div>
             </div>
+
             <div style={{ backgroundColor: '#e8f4fd', padding: '15px', borderRadius: '8px', border: '1px solid #b3d7ff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}><h4 style={{ margin: 0, color: '#000080' }}>🌾 Faslen (Items)</h4><button type="button" onClick={addItem} style={{ padding: '8px 15px', backgroundColor: '#198754', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>+ Fasal Add</button></div>
               {items.map((item, index) => {
-                // ✅ NAYA: Screen par real time Mun-Kilo show karna
                 const iKg = Number(item.weight) || 0;
                 const iMun = Math.floor(iKg / 40);
                 const iKilo = iKg % 40;
@@ -165,7 +247,8 @@ function PartaBill() {
               <h4 style={{ margin: '0 0 10px 0', color: isBaich ? '#383d41' : '#856404' }}>{isBaich ? '➕ Izafi Kharchay (Add to Bill)' : '➖ Katauti (Deduct from Bill)'}</h4>
               <div style={{ display: 'flex', gap: '15px' }}>
                 <div style={{ flex: 1 }}><label><b>Commission (%):</b></label><input type="number" step="0.01" value={commPercent} onChange={(e) => setCommPercent(e.target.value)} placeholder="Misal: 1" style={inputStyle} /></div>
-                <div style={{ flex: 1 }}><label><b>Mazdoori (Rs.):</b></label><input type="number" value={mazdooriAmount} onChange={(e) => setMazdooriAmount(e.target.value)} placeholder="1800" style={inputStyle} /></div>
+                {/* ✅ NAYA: Mazdoori ab percentage mein hai */}
+                <div style={{ flex: 1 }}><label><b>Mazdoori (%):</b></label><input type="number" step="0.01" value={mazdooriPercent} onChange={(e) => setMazdooriPercent(e.target.value)} placeholder="Misal: 1.3" style={inputStyle} /></div>
                 <div style={{ flex: 1 }}><label><b>Market Fee (Rs.):</b></label><input type="number" value={marketFeeAmount} onChange={(e) => setMarketFeeAmount(e.target.value)} placeholder="41" style={inputStyle} /></div>
                 <div style={{ flex: 1 }}><label><b>Dami (%):</b></label><input type="number" step="0.01" value={damiPercent} onChange={(e) => setDamiPercent(e.target.value)} placeholder="Misal: 1" style={inputStyle} /></div>
               </div>
@@ -205,7 +288,6 @@ function PartaBill() {
             <thead>
               <tr className="fs-5">
                 <th className="border-dark">اجناس</th>
-                {/* ✅ NAYA: Print par ab Mun-Kilo nazar aayega jaise parchi par hota hai */}
                 <th className="border-dark">وزن <span dir="ltr">(من - کلو)</span></th>
                 <th className="border-dark">در</th>
                 <th className="border-dark">روپے</th>
@@ -229,7 +311,8 @@ function PartaBill() {
               <tr>
                 <td colSpan="2" className="text-start urdu-text border-dark p-2" dir="rtl" style={{ lineHeight: '1.8' }}>
                   {commPercent > 0 && <span>کمیشن ({commPercent}%): <span dir="ltr">{commAmount.toFixed(2)}</span><br /></span>}
-                  {mazdooriAmount > 0 && <span>مزدوری: <span dir="ltr">{Number(mazdooriAmount).toFixed(2)}</span><br /></span>}
+                  {/* ✅ NAYA: Print par Mazdoori ki percentage bhi dikhegi */}
+                  {mazdooriPercent > 0 && <span>مزدوری ({mazdooriPercent}%): <span dir="ltr">{mazdooriAmount.toFixed(2)}</span><br /></span>}
                   {marketFeeAmount > 0 && <span>مارکیٹ فیس: <span dir="ltr">{Number(marketFeeAmount).toFixed(2)}</span><br /></span>}
                   {damiPercent > 0 && <span>دامی({damiPercent}%): <span dir="ltr">{damiAmount.toFixed(2)}</span></span>}
                 </td>

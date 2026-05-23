@@ -1,7 +1,12 @@
 const mongoose = require('mongoose');
 
 const partySchema = new mongoose.Schema({
-  // ✅ FIX: Yahan se 'unique: true' hata diya hai kyunke neeche custom index lagayenge
+  // ✅ NAYA FIELD: Auto-generate hone wala Khata Number
+  khataIndex: { 
+    type: Number, 
+    unique: true 
+  },
+  
   name: { type: String, required: true, trim: true }, 
   
   partyType: { type: String, required: true }, // Jaise: 'Kisan', 'Kharidar', 'Staff'
@@ -16,7 +21,6 @@ const partySchema = new mongoose.Schema({
 });
 
 // 🔥 CRITICAL FIX: Case-Insensitive Unique Index 
-// Yeh database ko majboor karega ke "Ali" aur "ali" ko ek hi party mane!
 partySchema.index(
   { name: 1 }, 
   { unique: true, collation: { locale: 'en', strength: 2 } }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import CreatableSelect from 'react-select/creatable';
 
 function Rokar() {
   const [data, setData] = useState(null); 
@@ -10,29 +11,28 @@ function Rokar() {
   const [partyName, setPartyName] = useState('');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
+  
   const [category, setCategory] = useState('General');
   const [saving, setSaving] = useState(false);
 
-  // ✅ NAYA: User ka role check karne ke liye taake Delete button sirf Admin ko dikhe
+  const [khatas, setKhatas] = useState([]);
+  const [partyOptions, setPartyOptions] = useState([]);
+  const [selectedParty, setSelectedParty] = useState(null);
+
   const userRole = localStorage.getItem('role');
+  const getToken = () => localStorage.getItem('token');
 
   // Rokar Load Karna
   const fetchRokar = async () => {
     try {
-      const token = localStorage.getItem('token');
-
       const response = await fetch('/api/rokar/today', {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'auth-token': token 
-        }
+        headers: { 'Content-Type': 'application/json', 'auth-token': getToken() }
       });
 
       if (response.status === 401) {
         alert("Aapka session expire ho gaya hai. Dobara login karein!");
-        localStorage.removeItem('token');
-        localStorage.removeItem('role');
+        localStorage.clear();
         window.location.href = '/login';
         return;
       }
@@ -40,8 +40,6 @@ function Rokar() {
       if (response.ok) {
         const result = await response.json();
         setData(result); 
-      } else {
-        console.error("Backend ne data nahi bheja");
       }
     } catch (err) {
       console.error("Rokar lane mein masla:", err);
@@ -50,49 +48,81 @@ function Rokar() {
     }
   };
 
+  const fetchInitialData = async () => {
+    try {
+      const khataRes = await fetch('/api/parcha/khatagroup/all', { headers: { 'auth-token': getToken() } });
+      if (khataRes.ok) {
+        const khataData = await khataRes.json();
+        if (Array.isArray(khataData)) {
+          setKhatas(khataData);
+        }
+      }
+
+      const partyRes = await fetch('/api/parcha/parties/all', { headers: { 'auth-token': getToken() } });
+      if (partyRes.ok) {
+        const partyData = await partyRes.json();
+        if (Array.isArray(partyData)) {
+          const formatted = partyData.map(p => ({
+            value: p.name,
+            label: `${p.khataIndex || 'N/A'} - ${p.name}`,
+            partyType: p.partyType
+          }));
+          setPartyOptions(formatted);
+        }
+      }
+    } catch (error) {
+      console.error("Master data load error:", error);
+    }
+  };
+
   useEffect(() => {
     fetchRokar();
+    fetchInitialData();
   }, []);
 
-  // Form Submit Karna
+  const handlePartyChange = (newValue) => {
+    setSelectedParty(newValue);
+    if (newValue) {
+      setPartyName(newValue.value);
+      if (newValue.partyType) {
+        setCategory(newValue.partyType);
+      }
+    } else {
+      setPartyName('');
+      setCategory('General'); 
+    }
+  };
+
   const handleAddEntry = async (e) => {
     e.preventDefault();
     if (!amount || !description) return alert('Bhai jan, Raqam aur Tafseel dono likhna zaroori hain!');
     
     setSaving(true);
-    const token = localStorage.getItem('token'); 
     
     try {
       const response = await fetch('/api/rokar/add-entry', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'auth-token': token 
-        },
+        headers: { 'Content-Type': 'application/json', 'auth-token': getToken() },
         body: JSON.stringify({
-          partyName,
-          amount,
-          description,
-          type: entryForm,
-          category
+          partyName, amount, description, type: entryForm, category
         })
       });
 
       if (response.status === 401) {
-        alert("Aapka session expire ho gaya hai. Dobara login karein!");
-        localStorage.removeItem('token');
-        localStorage.removeItem('role');
+        localStorage.clear();
         window.location.href = '/login';
         return;
       }
 
       if (response.ok) {
         setPartyName(''); 
+        setSelectedParty(null); 
         setAmount('');
         setDescription('');
-        setCategory('General');
+        setCategory('General'); 
         setEntryForm(null);
-        fetchRokar(); // Data wapis taaza karo
+        fetchRokar(); 
+        fetchInitialData(); 
       } else {
         alert("Entry save karne mein masla aagaya.");
       }
@@ -103,27 +133,15 @@ function Rokar() {
     }
   };
 
-  // Entry Delete karne ka function
   const handleDeleteEntry = async (transactionId) => {
     const isConfirm = window.confirm("⚠️ Kya aap waqai yeh entry delete karna chahte hain? (Galla aur Party ka balance automatically reverse ho jayega)");
     
     if (isConfirm) {
       try {
-        const token = localStorage.getItem('token');
         const response = await fetch(`/api/rokar/delete-entry/${data.rokar._id}/${transactionId}`, {
           method: 'DELETE',
-          headers: {
-            'auth-token': token
-          }
+          headers: { 'auth-token': getToken() }
         });
-
-        if (response.status === 401) {
-          alert("Aapka session expire ho gaya hai. Dobara login karein!");
-          localStorage.removeItem('token');
-          localStorage.removeItem('role');
-          window.location.href = '/login';
-          return;
-        }
 
         if (response.ok) {
           alert("✅ Entry kamyabi se delete ho gayi aur balance theek ho gaya!");
@@ -138,23 +156,19 @@ function Rokar() {
     }
   };
 
-  // Rokar Lock karne ka function
   const handleCloseRokar = async () => {
     const isConfirm = window.confirm("⚠️ KYA AAP WAQAI AAJ KI ROKAR BAND KARNA CHAHTE HAIN? Iske baad aaj ki tareekh mein koi nayi entry ya delete nahi ho sakega!");
     
     if (isConfirm) {
       try {
-        const token = localStorage.getItem('token');
         const response = await fetch(`/api/rokar/close`, {
           method: 'PUT',
-          headers: {
-            'auth-token': token
-          }
+          headers: { 'auth-token': getToken() }
         });
 
         if (response.ok) {
           alert("🔒 Aaj ki Rokar band kar di gayi hai!");
-          fetchRokar(); // Page refresh karo taake button gayab ho jayen
+          fetchRokar(); 
         } else {
           const err = await response.json();
           alert(`❌ Masla aaya: ${err.error}`);
@@ -165,20 +179,29 @@ function Rokar() {
     }
   };
 
-  if (loading) {
-    return <h2 className="text-center mt-5">⏳ آج کی روکڑ کھل رہی ہے... (Loading)</h2>;
-  }
-
-  if (!data || !data.rokar) {
-    return <h2 className="text-center mt-5 text-danger">❌ روکڑ کا نظام چل نہیں رہا۔ (Backend Error)</h2>;
-  }
+  if (loading) return <h2 className="text-center mt-5">⏳ آج کی روکڑ کھل رہی ہے... (Loading)</h2>;
+  if (!data || !data.rokar) return <h2 className="text-center mt-5 text-danger">❌ روکڑ کا نظام چل نہیں رہا۔ (Backend Error)</h2>;
 
   const { rokar, transactions } = data;
   const isRokarClosed = rokar.isClosed;
 
-  const totalJama = transactions.reduce((tot, t) => tot + (t.credit || 0), 0);
-  const totalNaam = transactions.reduce((tot, t) => tot + (t.debit || 0), 0);
+  // 🚀 ✅ FIX: Frontend par filter lagaya gaya hai, ab sirf Cash (ROK-) wali entries dikhengi!
+  const rokarTransactions = transactions.filter(t => t.voucherNo && t.voucherNo.startsWith('ROK-'));
+
+  const totalJama = rokarTransactions.reduce((tot, t) => tot + (t.credit || 0), 0);
+  const totalNaam = rokarTransactions.reduce((tot, t) => tot + (t.debit || 0), 0);
   const aajKaGalla = rokar.closingBalance; 
+
+  const selectStyles = {
+    control: (base) => ({
+      ...base,
+      minHeight: '38px', 
+      borderColor: '#dee2e6',
+      borderRadius: '0.375rem',
+      boxShadow: 'none',
+      '&:hover': { borderColor: '#86b7fe' }
+    })
+  };
 
   return (
     <div className="container mt-4" style={{ fontFamily: 'Arial, sans-serif' }}>
@@ -247,42 +270,60 @@ function Rokar() {
         </div>
       )}
 
-      {/* Nayi Entry Ka Form */}
+      {/* Entry Form */}
       {entryForm && !isRokarClosed && (
         <div className={`card shadow mb-4 border-${entryForm === 'Jama' ? 'success' : 'danger'}`}>
           <div className={`card-header text-white bg-${entryForm === 'Jama' ? 'success' : 'danger'} fw-bold fs-5`}>
             {entryForm === 'Jama' ? '🟢 نئی جمع درج کریں (New Cash IN)' : '🔴 نیا نام درج کریں (New Cash OUT)'}
           </div>
           <div className="card-body bg-light">
-            <form onSubmit={handleAddEntry} className="d-flex gap-3 align-items-end flex-wrap">
-              
-              <div style={{ flex: '1 1 200px' }}>
-                <label className="fw-bold">کھاتہ / پارٹی (Party):</label>
-                <input type="text" className="form-control" value={partyName} onChange={(e) => setPartyName(e.target.value)} placeholder="Maslan: Mian Aslam" />
+            <form onSubmit={handleAddEntry}>
+              <div className="row g-3 align-items-end">
+                
+                <div className="col-md-3">
+                  <label className="form-label fw-bold text-secondary small mb-1">کھاتہ / پارٹی (Party):</label>
+                  <CreatableSelect 
+                    options={partyOptions}
+                    value={selectedParty}
+                    onChange={handlePartyChange}
+                    placeholder="1001 ya naam likhein..."
+                    styles={selectStyles}
+                    isClearable
+                    formatCreateLabel={(inputValue) => `Naya Khata: "${inputValue}"`}
+                  />
+                </div>
+
+                <div className="col-md-2">
+                  <label className="form-label fw-bold text-secondary small mb-1">رقم (Amount):</label>
+                  <input type="number" className="form-control" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" required />
+                </div>
+                
+                <div className="col-md-4">
+                  <label className="form-label fw-bold text-secondary small mb-1">تفصیل (Description):</label>
+                  <input type="text" className="form-control" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="kis cheez ke paise hain?" required />
+                </div>
+                
+                <div className="col-md-3">
+                  <label className="form-label fw-bold text-secondary small mb-1">کیٹیگری (Category):</label>
+                  <select className="form-select" value={category} onChange={(e) => setCategory(e.target.value)} required>
+                    <option value="General">General (جنرل)</option>
+                    {khatas.map(k => (
+                      <option key={k._id} value={k.name}>{k.name}</option>
+                    ))}
+                  </select>
+                </div>
+
               </div>
 
-              <div style={{ flex: '1 1 150px' }}>
-                <label className="fw-bold">رقم (Amount):</label>
-                <input type="number" className="form-control" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" required />
-              </div>
-              <div style={{ flex: '2 1 250px' }}>
-                <label className="fw-bold">تفصیل (Description):</label>
-                <input type="text" className="form-control" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="kis cheez ke paise hain?" required />
-              </div>
-              <div style={{ flex: '1 1 150px' }}>
-                <label className="fw-bold">کیٹیگری (Category):</label>
-                <select className="form-control" value={category} onChange={(e) => setCategory(e.target.value)}>
-                  <option value="General">General</option>
-                  <option value="Wasoli">Wasoli</option>
-                  <option value="Adaigi">Adaigi</option>
-                  <option value="Kharcha">Dukan Kharcha</option>
-                </select>
-              </div>
-              <div>
-                <button type="submit" className={`btn btn-${entryForm === 'Jama' ? 'success' : 'danger'} fw-bold px-4`} disabled={saving}>
-                  {saving ? '⏳...' : 'Save ✅'}
-                </button>
-                <button type="button" onClick={() => setEntryForm(null)} className="btn btn-secondary ms-2 fw-bold">Cancel ❌</button>
+              <div className="row mt-4">
+                <div className="col-12 text-end">
+                  <button type="button" onClick={() => setEntryForm(null)} className="btn btn-outline-secondary fw-bold px-4 me-2 shadow-sm">
+                    Cancel ❌
+                  </button>
+                  <button type="submit" className={`btn btn-${entryForm === 'Jama' ? 'success' : 'danger'} fw-bold px-5 shadow-sm`} disabled={saving}>
+                    {saving ? '⏳...' : 'Save ✅'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -306,12 +347,12 @@ function Rokar() {
             </tr>
           </thead>
           <tbody>
-            {transactions.length === 0 ? (
+            {rokarTransactions.length === 0 ? (
               <tr>
-                <td colSpan={userRole === 'Admin' && !isRokarClosed ? "8" : "7"} className="text-center text-muted py-4">آج ابھی تک کوئی لین دین نہیں ہوا۔ (No entries yet)</td>
+                <td colSpan={userRole === 'Admin' && !isRokarClosed ? "8" : "7"} className="text-center text-muted py-4">آج ابھی تک گلے کا کوئی لین دین نہیں ہوا۔</td>
               </tr>
             ) : (
-              [...transactions].map((t, index) => (
+              [...rokarTransactions].map((t, index) => (
                 <tr key={index}>
                   <td className="fw-bold text-primary" dir="ltr">{t.voucherNo || 'N/A'}</td>
                   <td dir="ltr">{new Date(t.date).toLocaleTimeString()}</td>
@@ -321,19 +362,14 @@ function Rokar() {
                   <td className="text-success fw-bold">{t.credit > 0 ? `Rs. ${t.credit.toLocaleString()}` : '-'}</td>
                   <td className="text-danger fw-bold">{t.debit > 0 ? `Rs. ${t.debit.toLocaleString()}` : '-'}</td>
                   
-                  {/* ✅ NAYA: Delete Button sirf Seth (Admin) ko dikhega, aur sirf ROK- entries par */}
                   {userRole === 'Admin' && !isRokarClosed && (
                     <td>
-                      {t.voucherNo && t.voucherNo.startsWith('ROK-') ? (
-                        <button 
-                          onClick={() => handleDeleteEntry(t._id)}
-                          className="btn btn-sm btn-danger fw-bold"
-                        >
-                          🗑️ Delete
-                        </button>
-                      ) : (
-                        <span className="badge bg-secondary text-light">🔒 History se Delete karein</span>
-                      )}
+                      <button 
+                        onClick={() => handleDeleteEntry(t._id)}
+                        className="btn btn-sm btn-danger fw-bold"
+                      >
+                        🗑️ Delete
+                      </button>
                     </td>
                   )}
                 </tr>

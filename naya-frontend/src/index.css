@@ -1,46 +1,133 @@
 /* =========================================
-   SAB SE PEHLE IMPORT AAYEGA (VIP RULE)
+   RESPONSIVE DESKTOP & MOBILE SIDEBAR
    ========================================= */
-/* Urdu Font (Noto Nastaliq) */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap');
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  padding: 0;
+  background-color: #f4f7f9;
+  overflow: hidden; 
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+/* 1. Main Layout Container */
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
-/* =========================================
-   YAHAN SE NAYA PRINT AUR URDU KA BAAQI CODE HAI 
-   ========================================= */
-
-.urdu-text {
-  font-family: 'Noto Nastaliq Urdu', serif;
+/* 2. Sidebar ki basic setting */
+.desktop-sidebar {
+  width: 250px; 
+  background-color: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 4px 0 15px rgba(0,0,0,0.03);
+  z-index: 1050;
+  transition: all 0.3s ease-in-out; /* Smooth open/close animation */
 }
 
-/* Print ki setting (Sirf Parcha Print Hoga) */
-@media print {
-  body * {
-    visibility: hidden; /* Baqi sab chupa do (Buttons, Navbars waghaira) */
+/* --- DESKTOP (Bari Screen) --- */
+@media (min-width: 769px) {
+  .desktop-sidebar.closed {
+    width: 0;
+    min-width: 0;
+    transform: translateX(-250px);
+    border-right: none;
+    opacity: 0;
   }
-  .print-section, .print-section * {
-    visibility: visible; /* Sirf parcha dikhao */
-  }
-  .print-section {
-    position: absolute;
-    left: 0;
+}
+
+/* --- MOBILE & TABLET (Choti Screen) --- */
+@media (max-width: 768px) {
+  .desktop-sidebar {
+    position: fixed;
+    left: -260px; /* Shuru mein chupa hoga */
     top: 0;
-    width: 100%;
+    width: 260px;
   }
-  .no-print {
-    display: none !important; /* Print button ko print page se gayab kar do */
+  .desktop-sidebar.open {
+    left: 0; /* Button dabane par bahar aayega */
   }
+  
+  /* Mobile par background parda (Overlay) */
+  .sidebar-overlay.open {
+    display: block;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1040;
+  }
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
+/* 3. Main Content (Right Side) */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #f4f7f9;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Sidebar Links (Purana style hi hai) */
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  padding: 10px 18px; 
+  color: #475569;
+  text-decoration: none;
+  border-bottom: 1px solid #f1f5f9;
+  transition: all 0.2s ease-in-out;
+  white-space: nowrap;
+}
+
+.sidebar-link:hover {
+  background-color: #f8fafc;
+  color: #042e12;
+}
+
+.sidebar-link.active {
+  background-color: #f0fdf4; 
+  color: #042e12; 
+  border-left: 4px solid #f59e0b; 
+  font-weight: bold;
+}
+
+.sidebar-icon {
+  margin-right: 12px;
+  font-size: 18px; 
+}
+
+.urdu-text-menu {
+  font-family: 'Noto Nastaliq Urdu', serif;
+  font-size: 14.5px; 
+  line-height: 1.8;
+}
+
+/* Toggle Button Styling */
+.toggle-btn {
+  background-color: #f8fafc;
+  color: #042e12;
+  border: 1px solid #cbd5e1;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.toggle-btn:hover {
+  background-color: #e2e8f0;
 }

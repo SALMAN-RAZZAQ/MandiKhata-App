@@ -1,15 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+// ✅ NAYA: Searchable aur Creatable Dropdown ke liye
+import CreatableSelect from 'react-select/creatable';
 
 function JournalVoucher() {
   const [debitParty, setDebitParty]   = useState('');
   const [creditParty, setCreditParty] = useState('');
   const [amount, setAmount]           = useState('');
   const [details, setDetails]         = useState('');
+  // ✅ FIX: Default Category hamesha "General" rahay gi
   const [khataCategory, setKhataCategory] = useState('General');
   const [status, setStatus]           = useState('');
   const [lastVoucher, setLastVoucher] = useState(null);
   const [loading, setLoading]         = useState(false);
+
+  // ✅ NAYA: Parties aur Khatas ki states
+  const [khatas, setKhatas] = useState([]);
+  const [partyOptions, setPartyOptions] = useState([]);
+  const [selectedDebitParty, setSelectedDebitParty] = useState(null);
+  const [selectedCreditParty, setSelectedCreditParty] = useState(null);
 
   const navigate  = useNavigate();
   const getToken  = () => localStorage.getItem('token');
@@ -21,8 +30,59 @@ function JournalVoucher() {
     navigate('/login');
   };
 
+  // ✅ NAYA: Database se Khata Settings aur Parties load karna
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        // 1. Fetch Khata Categories (Sirf list mein dikhane ke liye)
+        const khataRes = await fetch('/api/parcha/khatagroup/all', { headers: { 'auth-token': getToken() } });
+        if (khataRes.ok) {
+          const khataData = await khataRes.json();
+          if (Array.isArray(khataData)) {
+            setKhatas(khataData);
+          }
+        }
+
+        // 2. Fetch Parties for Smart Dropdown
+        const partyRes = await fetch('/api/parcha/parties/all', { headers: { 'auth-token': getToken() } });
+        if (partyRes.ok) {
+          const partyData = await partyRes.json();
+          if (Array.isArray(partyData)) {
+            const formatted = partyData.map(p => ({
+              value: p.name,
+              label: `${p.khataIndex || 'N/A'} - ${p.name}`,
+              partyType: p.partyType
+            }));
+            setPartyOptions(formatted);
+          }
+        }
+      } catch (error) {
+        console.error("Master data load error:", error);
+      }
+    };
+    fetchInitialData();
+  }, []);
+
+  // ✅ NAYA: Debit aur Credit party change handlers
+  const handleDebitChange = (newValue) => {
+    setSelectedDebitParty(newValue);
+    setDebitParty(newValue ? newValue.value : '');
+    // Note: Yahan category auto-update nahi ki gayi taake by default "General" hi rahay
+  };
+
+  const handleCreditChange = (newValue) => {
+    setSelectedCreditParty(newValue);
+    setCreditParty(newValue ? newValue.value : '');
+    // Note: Yahan bhi category auto-update nahi ki gayi
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!debitParty || !creditParty) {
+      setStatus('❌ Debit aur Credit party dono ka muntakhib hona zaroori hai!');
+      return;
+    }
+
     setLoading(true);
     setStatus('');
 
@@ -52,9 +112,11 @@ function JournalVoucher() {
         // Form reset
         setDebitParty('');
         setCreditParty('');
+        setSelectedDebitParty(null);
+        setSelectedCreditParty(null);
         setAmount('');
         setDetails('');
-        setKhataCategory('General');
+        setKhataCategory('General'); // Reset honay par phir se General
       } else {
         setStatus('❌ ' + (data.error || 'Masla aagaya!'));
       }
@@ -87,6 +149,19 @@ function JournalVoucher() {
     } catch (err) {
       alert('❌ Network Error!');
     }
+  };
+
+  // React Select Styling
+  const selectStyles = {
+    control: (base) => ({
+      ...base,
+      padding: '4px',
+      borderRadius: '5px',
+      borderColor: '#ccc',
+      boxShadow: 'none',
+      fontSize: '15px',
+      '&:hover': { borderColor: '#6f42c1' }
+    })
   };
 
   return (
@@ -124,13 +199,14 @@ function JournalVoucher() {
             <small style={{ color: '#666', display: 'block', marginBottom: '8px' }}>
               Jis party ka balance GHATEGA
             </small>
-            <input
-              type="text"
-              value={debitParty}
-              onChange={(e) => setDebitParty(e.target.value)}
-              placeholder="Party ka naam..."
-              required
-              style={inputStyle}
+            <CreatableSelect 
+              options={partyOptions}
+              value={selectedDebitParty}
+              onChange={handleDebitChange}
+              placeholder="1001 ya naam likhein..."
+              styles={selectStyles}
+              isClearable
+              formatCreateLabel={(inputValue) => `Naya Khata: "${inputValue}"`}
             />
           </div>
 
@@ -147,13 +223,14 @@ function JournalVoucher() {
             <small style={{ color: '#666', display: 'block', marginBottom: '8px' }}>
               Jis party ka balance BADHEGA
             </small>
-            <input
-              type="text"
-              value={creditParty}
-              onChange={(e) => setCreditParty(e.target.value)}
-              placeholder="Party ka naam..."
-              required
-              style={inputStyle}
+            <CreatableSelect 
+              options={partyOptions}
+              value={selectedCreditParty}
+              onChange={handleCreditChange}
+              placeholder="1001 ya naam likhein..."
+              styles={selectStyles}
+              isClearable
+              formatCreateLabel={(inputValue) => `Naya Khata: "${inputValue}"`}
             />
           </div>
         </div>
@@ -184,10 +261,9 @@ function JournalVoucher() {
               style={inputStyle}
             >
               <option value="General">General</option>
-              <option value="Kisan">Kisan</option>
-              <option value="Kharidar">Kharidar</option>
-              <option value="Staff">Staff</option>
-              <option value="Kharcha">Dukan Kharcha</option>
+              {khatas.map(k => (
+                <option key={k._id} value={k.name}>{k.name}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -286,5 +362,3 @@ const inputStyle = {
 };
 
 export default JournalVoucher;
-
-

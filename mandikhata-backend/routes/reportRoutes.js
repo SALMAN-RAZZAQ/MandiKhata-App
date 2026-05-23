@@ -51,7 +51,7 @@ router.get('/trial-balance', fetchUser, adminOnly, async (req, res) => {
 });
 
 // ==========================================
-// 4. NAYA: Dukan Ki Kamai (Income / Profit)
+// 4. Dukan Ki Kamai (Income / Profit)
 // ==========================================
 router.get('/income', fetchUser, adminOnly, async (req, res) => {
   try {
@@ -91,8 +91,8 @@ router.get('/income', fetchUser, adminOnly, async (req, res) => {
       totalDami: prc.dami + prt.dami,
     };
     
-    // Grand Total
-    totalIncome.grandTotal = totalIncome.totalCommission + totalIncome.totalMazdoori + totalIncome.totalMarketFee + totalIncome.totalDami;
+    // 🚀 ✅ FIX: Grand Total mein se 'totalMazdoori' nikal di gayi hai kyunke wo Palledar ka haq hai
+    totalIncome.grandTotal = totalIncome.totalCommission + totalIncome.totalMarketFee + totalIncome.totalDami;
 
     res.json(totalIncome);
   } catch (error) {

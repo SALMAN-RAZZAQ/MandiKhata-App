@@ -26,6 +26,16 @@ const getTodayDate = () => {
   return `${day}/${month}/${year}`; 
 };
 
+// 🚀 ✅ NAYA HELPER: Session (Locker) support ke sath
+const getNextKhataIndex = async (session = null) => {
+  let query = Party.findOne().sort({ khataIndex: -1 });
+  if (session) {
+    query = query.session(session);
+  }
+  const lastParty = await query;
+  return (lastParty && lastParty.khataIndex) ? lastParty.khataIndex + 1 : 1001;
+};
+
 // Route 1: Aaj ki Rokar kholna ya check karna
 router.get('/today', fetchUser, async (req, res) => {
   try {
@@ -92,18 +102,28 @@ router.post('/add-entry', fetchUser, async (req, res) => {
         details: description
     });
     
+    // ✅ FIX: brackets mein 'session' likha gaya hai
     if (partyName && partyName !== 'Cash / General') {
-        const partyKhata = await Party.findOne({ name: partyName }).session(session);
-        if(partyKhata) {
-            newTransaction.partyId = partyKhata._id;
-            newTransaction.khataCategory = partyKhata.partyType;
-            
-            if (type === 'Jama') partyKhata.currentBalance += Number(amount);
-            if (type === 'Naam') partyKhata.currentBalance -= Number(amount);
-            partyKhata.balanceType = partyKhata.currentBalance >= 0 ? 'Jama' : 'Naam';
-
-            await partyKhata.save({ session }); 
+        let partyKhata = await Party.findOne({ name: partyName }).session(session);
+        
+        if(!partyKhata) {
+            const nextIndex = await getNextKhataIndex(session);
+            partyKhata = new Party({ 
+                name: partyName, 
+                partyType: category || 'General', 
+                khataIndex: nextIndex, 
+                currentBalance: 0 
+            });
         }
+        
+        newTransaction.partyId = partyKhata._id;
+        newTransaction.khataCategory = partyKhata.partyType;
+        
+        if (type === 'Jama') partyKhata.currentBalance += Number(amount);
+        if (type === 'Naam') partyKhata.currentBalance -= Number(amount);
+        partyKhata.balanceType = partyKhata.currentBalance >= 0 ? 'Jama' : 'Naam';
+
+        await partyKhata.save({ session }); 
     }
 
     await newTransaction.save({ session }); 
@@ -142,7 +162,7 @@ router.get('/khata/:name', fetchUser, async (req, res) => {
   }
 });
 
-// Route 4: Entry Delete (✅ BUG FIX: Sirf ROK- entries allow ki hain)
+// Route 4: Entry Delete (Sirf ROK- entries allow ki hain)
 router.delete('/delete-entry/:rokarId/:transactionId', fetchUser, adminOnly, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -153,7 +173,6 @@ router.delete('/delete-entry/:rokarId/:transactionId', fetchUser, adminOnly, asy
     const entry = await Transaction.findById(transactionId).session(session);
     if (!entry) throw new Error('Entry nahi mili!');
 
-    // ✅ YAHAN HAI ASAL FIX: Rokar page se sirf Cash entries delete hongi!
     if (!entry.voucherNo || !entry.voucherNo.startsWith('ROK-')) {
       throw new Error("❌ Yeh Parcha ya Bill ki entry hai! Isay Rokar se delete nahi kar sakte. Isay History page se ja kar delete karein.");
     }

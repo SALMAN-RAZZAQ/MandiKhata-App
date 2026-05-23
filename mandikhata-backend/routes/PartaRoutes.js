@@ -19,8 +19,18 @@ const getNextSequenceValue = async (sequenceName) => {
   return sequenceDocument.seq;
 };
 
+// 🚀 ✅ NAYA HELPER: Session (Locker) support ke sath
+const getNextKhataIndex = async (session = null) => {
+  let query = Party.findOne().sort({ khataIndex: -1 });
+  if (session) {
+    query = query.session(session); // Transaction locker mein check karega
+  }
+  const lastParty = await query;
+  return (lastParty && lastParty.khataIndex) ? lastParty.khataIndex + 1 : 1001;
+};
+
 // =========================================
-// Route 1: Naya Parta Bill (✅ Khareed & Baich Logic)
+// Route 1: Naya Parta Bill (Khareed & Baich Logic + Mazdoori Transfer)
 // =========================================
 router.post('/add', fetchUser, async (req, res) => {
   const session = await mongoose.startSession();
@@ -28,7 +38,7 @@ router.post('/add', fetchUser, async (req, res) => {
 
   try {
     const {
-      transactionType, // ✅ NAYA
+      transactionType, 
       customerName, khataCategory, items,
       commPercent, commAmount, mazdooriAmount,
       marketFeeAmount, damiPercent, damiAmount, details
@@ -42,15 +52,12 @@ router.post('/add', fetchUser, async (req, res) => {
          throw new Error("❌ Wazan, Rate ya Amount minus (-) mein nahi ho sakte!");
       }
 
-      // ✅ STOCK LOGIC: Khareed par plus, Baich par minus
       let inventory = await Inventory.findOne({ cropName: item.cropType }).session(session);
       if (!inventory) inventory = new Inventory({ cropName: item.cropType, totalWeight: 0 }); 
       
-      if (transactionType === 'Khareed_Kisan') {
-        inventory.totalWeight += Number(item.weight); // Maal godam mein aaya
-      } else {
-        inventory.totalWeight -= Number(item.weight); // Maal dukan se bika
-      }
+      if (transactionType === 'Khareed_Kisan') inventory.totalWeight += Number(item.weight); 
+      else inventory.totalWeight -= Number(item.weight); 
+      
       await inventory.save({ session });
     }
 
@@ -58,25 +65,20 @@ router.post('/add', fetchUser, async (req, res) => {
     const totalExpenses = (Number(commAmount) || 0) + (Number(mazdooriAmount) || 0) + 
                            (Number(marketFeeAmount) || 0) + (Number(damiAmount) || 0);
     
-    // ✅ BILL LOGIC: Baichne par Kharchay (Dami waghera) add honge, Khareedne par Minus honge
     let netAmount = 0;
-    if (transactionType === 'Baich_Kharidar') {
-      netAmount = grossAmount + totalExpenses; 
-    } else {
-      netAmount = grossAmount - totalExpenses; 
-    }
+    if (transactionType === 'Baich_Kharidar') netAmount = grossAmount + totalExpenses; 
+    else netAmount = grossAmount - totalExpenses; 
 
     let party = await Party.findOne({ name: customerName }).session(session);
     if (!party) {
-      party = new Party({ name: customerName, partyType: khataCategory || 'Kisan', currentBalance: 0 });
+      // ✅ FIX: brackets mein 'session' likha gaya hai
+      const nextIndex = await getNextKhataIndex(session);
+      party = new Party({ name: customerName, partyType: khataCategory || 'Kisan', khataIndex: nextIndex, currentBalance: 0 });
     }
 
-    // ✅ ACCOUNTING LOGIC: Baichne par party ne paise dene hain (Naam). Khareed par humne dene hain (Jama)
-    if (transactionType === 'Baich_Kharidar') {
-      party.currentBalance -= netAmount; 
-    } else {
-      party.currentBalance += netAmount; 
-    }
+    if (transactionType === 'Baich_Kharidar') party.currentBalance -= netAmount; 
+    else party.currentBalance += netAmount; 
+    
     party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam';
     await party.save({ session });
 
@@ -99,6 +101,26 @@ router.post('/add', fetchUser, async (req, res) => {
       credit: transactionType !== 'Baich_Kharidar' ? netAmount : 0,
       details: `Parta Bill: ${finalPartaNo} — Items: ${items.length}`
     }).save({ session });
+
+    // 🚀 ✅ MAZDOORI AUTO-TRANSFER LOGIC (Fixed Category Name)
+    if (Number(mazdooriAmount) > 0) {
+      let palledar = await Party.findOne({ name: 'Palledar Khata' }).session(session);
+      if (!palledar) {
+        // ✅ FIX: brackets mein 'session' likha gaya hai
+        const pNextIndex = await getNextKhataIndex(session);
+        palledar = new Party({ name: 'Palledar Khata', partyType: 'Staff/Labour(لیبر)', khataIndex: pNextIndex, currentBalance: 0 });
+      }
+      palledar.currentBalance += Number(mazdooriAmount); 
+      palledar.balanceType = palledar.currentBalance >= 0 ? 'Jama' : 'Naam';
+      await palledar.save({ session });
+
+      await new Transaction({
+          voucherNo: finalPartaNo, date: Date.now(), transactionType: 'Mazdoori',
+          khataCategory: palledar.partyType, partyId: palledar._id, partyName: palledar.name,
+          debit: 0, credit: Number(mazdooriAmount), 
+          details: `Mazdoori Parta Bill: ${finalPartaNo}`
+      }).save({ session });
+    }
 
     await session.commitTransaction();
     session.endSession();
@@ -132,7 +154,7 @@ router.get('/:id', fetchUser, async (req, res) => {
 });
 
 // =========================================
-// Route 4: Parta Bill Delete (✅ Reverse Logic)
+// Route 4: Parta Bill Delete (Reverse Logic)
 // =========================================
 router.delete('/delete/:id', fetchUser, adminOnly, async (req, res) => {
   const session = await mongoose.startSession();
@@ -144,28 +166,31 @@ router.delete('/delete/:id', fetchUser, adminOnly, async (req, res) => {
 
     const party = await Party.findById(bill.partyId).session(session);
     if (party) {
-      if (bill.transactionType === 'Baich_Kharidar') {
-        party.currentBalance += bill.netAmount; // Reverse of Naam
-      } else {
-        party.currentBalance -= bill.netAmount; // Reverse of Jama
-      }
+      if (bill.transactionType === 'Baich_Kharidar') party.currentBalance += bill.netAmount; 
+      else party.currentBalance -= bill.netAmount; 
       party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam';
       await party.save({ session });
+    }
+
+    if (bill.mazdooriAmount && bill.mazdooriAmount > 0) {
+      let palledar = await Party.findOne({ name: 'Palledar Khata' }).session(session);
+      if (palledar) {
+        palledar.currentBalance -= bill.mazdooriAmount; 
+        palledar.balanceType = palledar.currentBalance >= 0 ? 'Jama' : 'Naam';
+        await palledar.save({ session });
+      }
     }
 
     for (let item of bill.items) {
       let inventory = await Inventory.findOne({ cropName: item.cropType }).session(session);
       if (inventory) {
-        if (bill.transactionType === 'Baich_Kharidar') {
-          inventory.totalWeight += Number(item.weight); // Maal wapis godam mein
-        } else {
-          inventory.totalWeight -= Number(item.weight); // Maal godam se minus
-        }
+        if (bill.transactionType === 'Baich_Kharidar') inventory.totalWeight += Number(item.weight); 
+        else inventory.totalWeight -= Number(item.weight); 
         await inventory.save({ session });
       }
     }
 
-    await Transaction.findOneAndDelete({ voucherNo: bill.partaNo }, { session });
+    await Transaction.deleteMany({ voucherNo: bill.partaNo }, { session });
     await PartaBill.findByIdAndDelete(req.params.id, { session });
 
     await session.commitTransaction();

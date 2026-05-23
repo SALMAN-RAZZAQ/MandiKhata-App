@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+// ✅ NAYA: Searchable aur Creatable Dropdown ke liye
+import CreatableSelect from 'react-select/creatable';
 
 const DUKAN_INFO = {
   nameUrdu: "میاں علی محمد اینڈ سنز",
@@ -14,6 +16,10 @@ function AuctionEntry() {
   const [khatas, setKhatas] = useState([]);
   const [cropsList, setCropsList] = useState([]); 
   
+  // ✅ NAYA: Parties ki list aur selected party ki state
+  const [partyOptions, setPartyOptions] = useState([]);
+  const [selectedParty, setSelectedParty] = useState(null);
+
   const [parchaNumber, setParchaNumber] = useState('---');
   const confirmedParchaNoRef = useRef('---');
 
@@ -42,6 +48,7 @@ function AuctionEntry() {
   };
 
   useEffect(() => {
+    // 1. Fetch Khata Groups
     fetch('/api/parcha/khatagroup/all', { headers: { 'auth-token': getToken() } })
       .then(res => res.json())
       .then(data => {
@@ -51,16 +58,45 @@ function AuctionEntry() {
         }
       }).catch(err => { if (err.message === 'Unauthorized') handleSessionExpire(); });
 
+    // 2. Fetch Crops
     fetch('/api/crops/all', { headers: { 'auth-token': getToken() } })
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setCropsList(data); })
       .catch(err => console.error(err));
+
+    // 🚀 3. Fetch Parties (Index aur Naam ke liye)
+    fetch('/api/parcha/parties/all', { headers: { 'auth-token': getToken() } })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const formatted = data.map(p => ({
+            value: p.name,
+            label: `${p.khataIndex || 'N/A'} - ${p.name}`,
+            partyType: p.partyType
+          }));
+          setPartyOptions(formatted);
+        }
+      })
+      .catch(err => console.error("Parties load error:", err));
   }, []);
+
+  // ✅ NAYA: Jab Munshi Party select kare ya naya naam likhay
+  const handlePartyChange = (newValue) => {
+    setSelectedParty(newValue);
+    if (newValue) {
+      setFarmerName(newValue.value);
+      // Agar purani party select ki hai toh uska Khata Group khud select karwao
+      if (newValue.partyType) {
+        setKhataCategory(newValue.partyType);
+      }
+    } else {
+      setFarmerName('');
+    }
+  };
 
   const isBaich = transactionType === 'Baich_Kisan'; 
   const totalKg = Number(weight) || 0;
 
-  // ✅ NAYA: Mun aur Kilo nikalne ka formula
   const displayMun = Math.floor(totalKg / 40);
   const displayKilo = totalKg % 40;
 
@@ -76,6 +112,8 @@ function AuctionEntry() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if(!farmerName) return setStatus('❌ Party ka naam zaroori hai!');
+
     setStatus('⏳ Parchi Save ho rahi hai...');
 
     try {
@@ -103,7 +141,7 @@ function AuctionEntry() {
         if (printFlagRef.current) setTimeout(() => window.print(), 150);
 
         setTimeout(() => {
-          setFarmerName(''); setCropType(''); setWeight(''); setRate('');
+          setFarmerName(''); setSelectedParty(null); setCropType(''); setWeight(''); setRate('');
           setCommPercent(''); setLaborPercent(''); setDamiPercent(''); setMarketFeePercent('');
           setStatus(''); setParchaNumber('---'); confirmedParchaNoRef.current = '---';
           if (khatas.length > 0) setKhataCategory(khatas[0].name); else setKhataCategory('');
@@ -117,6 +155,18 @@ function AuctionEntry() {
   };
 
   const currentDate = new Date().toLocaleDateString('en-GB');
+
+  // React Select Styling to match your input style
+  const selectStyles = {
+    control: (base) => ({
+      ...base,
+      marginTop: '5px',
+      padding: '2px',
+      borderColor: '#ccc',
+      boxShadow: 'none',
+      '&:hover': { borderColor: '#000080' }
+    })
+  };
 
   return (
     <>
@@ -135,8 +185,7 @@ function AuctionEntry() {
                 <select value={transactionType} onChange={(e) => setTransactionType(e.target.value)} style={inputStyle}>
                   <option value="Khareed_Kisan">Khareed Kisan (خرید کسان)</option>
                   <option value="Baich_Kisan">Baich Kisan (بیچ کسان)</option>
-                  <option value="Adaigi">Adaigi (ادائیگی)</option>
-                  <option value="Wasooli">Wasooli (وصولی)</option>
+                  
                 </select>
               </div>
               <div style={{ flex: 1 }}>
@@ -147,10 +196,24 @@ function AuctionEntry() {
                 </select>
               </div>
             </div>
+            
             <div style={{ display: 'flex', gap: '15px' }}>
-              <div style={{ flex: 1 }}><label><b>Party Ka Naam:</b></label><input type="text" value={farmerName} onChange={(e) => setFarmerName(e.target.value)} required placeholder="Party ka naam likhein..." style={inputStyle} /></div>
+              {/* ✅ UPDATED: Manual Input hata kar Smart Dropdown laga diya gaya hai */}
+              <div style={{ flex: 1 }}>
+                <label><b>Party Ka Naam (Index ya Naam):</b></label>
+                <CreatableSelect 
+                  options={partyOptions}
+                  value={selectedParty}
+                  onChange={handlePartyChange}
+                  placeholder="1001 ya Usman likhein..."
+                  styles={selectStyles}
+                  isClearable
+                  formatCreateLabel={(inputValue) => `Naya Khata: "${inputValue}"`}
+                />
+              </div>
               <div style={{ flex: 1 }}><label><b>Jins (Crop):</b></label><select value={cropType} onChange={(e) => setCropType(e.target.value)} style={inputStyle} required><option value="">Fasal Select Karein...</option>{cropsList.map(crop => (<option key={crop._id} value={crop.name}>{crop.name}</option>))}</select></div>
             </div>
+
             <div style={{ display: 'flex', gap: '15px' }}>
               <div style={{ flex: 1 }}>
                 <label><b>Wazan (Total KG):</b></label>
@@ -222,7 +285,6 @@ function AuctionEntry() {
             <tbody style={{ fontFamily: 'Arial', fontSize: '18px' }}>
               <tr>
                 <td className="urdu-text fs-5 border-dark">{cropType || '................'}</td>
-                {/* ✅ NAYA: Print par ab Mun-Kilo nazar aayega jaise parchi par hota hai */}
                 <td className="urdu-text border-dark fw-bold">
                   وزن: <span dir="ltr">{displayMun}-{displayKilo}</span> <br/>
                   <small style={{ fontWeight: 'normal' }}>({displayMun} من {displayKilo} کلو)</small>
