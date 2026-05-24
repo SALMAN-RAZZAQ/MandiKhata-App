@@ -20,6 +20,7 @@ function Navbar({ isOpen, setIsOpen, isMobile }) {
     { title: 'ڈیش بورڈ (Dashboard)', path: '/dashboard', icon: '🏠' },
     { title: 'کچا بل', path: '/auction', icon: '📝' },
     { title: 'پکا بل', path: '/parta-bill', icon: '📋' },
+    { title: 'خریداری / ٹریڈنگ', path: '/trading-bill', icon: '📊' }, // ✅ NAYA BUTTON YAHAN ADD KIYA HAI
     { title: 'روزنامچہ / کیش بک', path: '/rokar', icon: '💰' },
     { title: 'پکا کھاتہ', path: '/pakka-khata', icon: '📒' },
     { title: 'جرنل واؤچر', path: '/journal-voucher', icon: '📓' },
@@ -43,6 +44,7 @@ function Navbar({ isOpen, setIsOpen, isMobile }) {
           <small style={{ color: '#64748b', fontWeight: 'bold' }}></small>
         </div>
       </Link>
+     
 
       <div className="sidebar-menu-container" style={{ flex: 1, overflowY: 'auto' }}>
         {menuItems.map((item, index) => (
@@ -55,6 +57,7 @@ function Navbar({ isOpen, setIsOpen, isMobile }) {
             <span className="sidebar-icon">{item.icon}</span>
             <span className="urdu-text-menu">{item.title}</span>
           </Link>
+          
         ))}
       </div>
 

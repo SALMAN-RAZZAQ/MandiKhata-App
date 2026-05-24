@@ -4,6 +4,7 @@ const Party = require('../models/Party');
 const Transaction = require('../models/Transaction');
 const Parcha = require('../models/Parcha'); 
 const PartaBill = require('../models/PartaBill'); 
+const TradingBill = require('../models/TradingBill'); 
 const fetchUser = require('../middleware/fetchUser');
 const adminOnly = require('../middleware/adminOnly');
 
@@ -50,55 +51,36 @@ router.get('/trial-balance', fetchUser, adminOnly, async (req, res) => {
   }
 });
 
-// ==========================================
-// 4. Dukan Ki Kamai (Income / Profit)
-// ==========================================
 router.get('/income', fetchUser, adminOnly, async (req, res) => {
   try {
-    // Katcha Parcha se aamdan
     const parchaIncome = await Parcha.aggregate([
-      {
-        $group: {
-          _id: null,
-          commission: { $sum: "$commission" },
-          mazdoori: { $sum: "$mazdoori" },
-          marketFee: { $sum: "$marketFee" },
-          dami: { $sum: "$dami" }
-        }
-      }
+      { $group: { _id: null, commission: { $sum: "$commission" }, mazdoori: { $sum: "$mazdoori" }, marketFee: { $sum: "$marketFee" }, dami: { $sum: "$dami" } } }
     ]);
-
-    // Pakka Parta se aamdan
     const partaIncome = await PartaBill.aggregate([
-      {
-        $group: {
-          _id: null,
-          commission: { $sum: "$commAmount" },
-          mazdoori: { $sum: "$mazdooriAmount" },
-          marketFee: { $sum: "$marketFeeAmount" },
-          dami: { $sum: "$damiAmount" }
-        }
-      }
+      { $group: { _id: null, commission: { $sum: "$commAmount" }, mazdoori: { $sum: "$mazdooriAmount" }, marketFee: { $sum: "$marketFeeAmount" }, dami: { $sum: "$damiAmount" } } }
+    ]);
+    const tradingIncome = await TradingBill.aggregate([
+      { $group: { _id: null, commission: { $sum: "$totals.totalCommission" }, mazdoori: { $sum: "$totals.totalLabour" }, marketFee: { $sum: "$totals.totalMarketFee" }, damiPaid: { $sum: "$totals.totalDamiAmount" } } }
     ]);
 
     const prc = parchaIncome[0] || { commission: 0, mazdoori: 0, marketFee: 0, dami: 0 };
     const prt = partaIncome[0] || { commission: 0, mazdoori: 0, marketFee: 0, dami: 0 };
+    const trd = tradingIncome[0] || { commission: 0, mazdoori: 0, marketFee: 0, damiPaid: 0 };
 
-    const totalIncome = {
-      totalCommission: prc.commission + prt.commission,
-      totalMazdoori: prc.mazdoori + prt.mazdoori,
-      totalMarketFee: prc.marketFee + prt.marketFee,
-      totalDami: prc.dami + prt.dami,
-    };
+    const totalCommission = (prc.commission || 0) + (prt.commission || 0) + (trd.commission || 0);
+    const totalMazdoori = (prc.mazdoori || 0) + (prt.mazdoori || 0) + (trd.mazdoori || 0);
+    const totalMarketFee = (prc.marketFee || 0) + (prt.marketFee || 0) + (trd.marketFee || 0);
+    const totalDamiIncome = (prc.dami || 0) + (prt.dami || 0);
+    const totalTradingDamiPaid = (trd.damiPaid || 0);
     
-    // 🚀 ✅ FIX: Grand Total mein se 'totalMazdoori' nikal di gayi hai kyunke wo Palledar ka haq hai
-    totalIncome.grandTotal = totalIncome.totalCommission + totalIncome.totalMarketFee + totalIncome.totalDami;
+    const grandTotal = (totalCommission + totalDamiIncome) - totalTradingDamiPaid;
 
-    res.json(totalIncome);
+    res.json({
+      totalCommission, totalMazdoori, totalMarketFee, totalDamiIncome, totalTradingDamiPaid, grandTotal
+    });
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: 'Income load nahi ho saki.' });
   }
 });
 
-module.exports = router;
+module.exports = router; // 🔥 YEH LINE MISSING THI JISKI WAJAH SE ERROR AAYA!

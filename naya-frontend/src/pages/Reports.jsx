@@ -6,8 +6,16 @@ function Reports() {
   const [monthlySummary, setMonthlySummary] = useState([]);
   const [trialBalance, setTrialBalance] = useState({ totalDebit: 0, totalCredit: 0 });
   
-  // ✅ NAYA: Income state
-  const [income, setIncome] = useState({ totalCommission: 0, totalMazdoori: 0, totalMarketFee: 0, totalDami: 0, grandTotal: 0 });
+  // ✅ NAYA: Income state updated
+  const [income, setIncome] = useState({ 
+    totalCommission: 0, 
+    totalMazdoori: 0, 
+    totalMarketFee: 0, 
+    totalDamiIncome: 0, 
+    totalTradingDamiPaid: 0, 
+    grandTotal: 0 
+  });
+  
   const [loading, setLoading] = useState(true);
   
   const navigate = useNavigate();
@@ -25,18 +33,17 @@ function Reports() {
       try {
         const headers = { 'auth-token': getToken() };
         
-        // Chaaron APIs ko ek sath call karo
         const [balRes, sumRes, tbRes, incRes] = await Promise.all([
           fetch('/api/reports/balances', { headers }),
           fetch('/api/reports/monthly', { headers }),
           fetch('/api/reports/trial-balance', { headers }),
-          fetch('/api/reports/income', { headers }) // ✅ NAYA
+          fetch('/api/reports/income', { headers })
         ]);
 
         if (balRes.ok) setBalances(await balRes.json());
         if (sumRes.ok) setMonthlySummary(await sumRes.json());
         if (tbRes.ok) setTrialBalance(await tbRes.json());
-        if (incRes.ok) setIncome(await incRes.json()); // ✅ NAYA
+        if (incRes.ok) setIncome(await incRes.json());
         
       } catch (error) {
         console.error("Reports load error:", error);
@@ -94,28 +101,41 @@ function Reports() {
       {/* ========================================= */}
       <h3 style={{ color: '#198754', marginTop: '30px' }}>💵 Meri Kamai (Income Tracker)</h3>
       <div style={{ display: 'flex', gap: '20px', marginBottom: '30px', flexWrap: 'wrap' }}>
+        
         <div style={incomeCardStyle('#0d6efd')}>
           <h4>Commission</h4>
-          <h2>Rs. {income.totalCommission.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
+          <h2>Rs. {income.totalCommission?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
         </div>
+        
         <div style={incomeCardStyle('#6f42c1')}>
-          <h4>Dami</h4>
-          <h2>Rs. {income.totalDami.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
+          <h4>Dami (Wusool)</h4>
+          <h2>Rs. {income.totalDamiIncome?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
         </div>
-        <div style={incomeCardStyle('#fd7e14')}>
-          <h4>Mazdoori</h4>
-          <h2>Rs. {income.totalMazdoori.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
-        </div>
+        
         <div style={incomeCardStyle('#20c997')}>
           <h4>Market Fee</h4>
-          <h2>Rs. {income.totalMarketFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
+          <h2>Rs. {income.totalMarketFee?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
         </div>
-        <div style={{ ...incomeCardStyle('#198754'), backgroundColor: '#198754', color: 'white', border: 'none' }}>
-          <h4 style={{ color: '#d1e7dd' }}>Grand Total Profit</h4>
-          <h2 style={{ fontSize: '28px' }}>Rs. {income.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
+
+        <div style={incomeCardStyle('#fd7e14')}>
+          <h4>Mazdoori (Palledar)</h4>
+          <h2>Rs. {income.totalMazdoori?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
         </div>
+
+        {/* ✅ NAYA: TRADING DAMI ADAIGI BOX (RED) */}
+        <div style={incomeCardStyle('#dc3545')}>
+          <h4>Trading Dami (Di Gayi)</h4>
+          <h2 style={{ color: '#dc3545' }}>- Rs. {income.totalTradingDamiPaid?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
+        </div>
+
       </div>
 
+      {/* GRAND TOTAL ROW */}
+      <div style={{ ...incomeCardStyle('#198754'), backgroundColor: '#198754', color: 'white', border: 'none', marginBottom: '30px' }}>
+        <h4 style={{ color: '#d1e7dd', margin: '0 0 10px 0' }}>Grand Total Profit (Commission + Dami Wusool - Trading Dami)</h4>
+        <h2 style={{ fontSize: '32px', margin: 0 }}>Rs. {income.grandTotal?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
+      </div>
+      
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         {/* OUTSTANDING BALANCES */}
         <div style={{ flex: 1, minWidth: '400px', backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>

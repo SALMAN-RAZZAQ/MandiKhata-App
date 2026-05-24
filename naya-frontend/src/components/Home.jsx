@@ -37,7 +37,7 @@ function Home() {
         alignSelf: 'flex-start', 
         marginLeft: '43%'
       }}>
-        ( A Name of Trust Since 1985 )
+        ( A Name of Trust Since 1988 )
       </h4>
       
       {/* 2. Commission Shop & Trader */}

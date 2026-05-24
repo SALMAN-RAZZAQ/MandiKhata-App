@@ -15,7 +15,7 @@ import ParchaHistory from './pages/ParchaHistory';
 import AllParties from './pages/AllParties';
 import Inventory from './pages/Inventory';
 import Home from './components/Home'; 
-
+import TradingBill from './pages/TradingBill';
 function App() {
   const isAuthenticated = () => !!localStorage.getItem('token');
   
@@ -79,6 +79,7 @@ function App() {
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/auction" element={<AuctionEntry />} />
                     <Route path="/pakka-khata" element={<PakkaKhata />} />
+                    <Route path="/trading-bill" element={<TradingBill />} />
                     <Route path="/rokar" element={<Rokar />} />
                     <Route path="/parta-bill" element={<PartaBill />} />
                     <Route path="/journal-voucher" element={<JournalVoucher />} />
@@ -88,8 +89,8 @@ function App() {
                     <Route path="/inventory" element={<Inventory />} />
                     <Route path="/settings" element={<KhataSettings />} />
                     <Route path="/reports" element={<Reports />} />
-                    
-                    <Route path="/" element={<Navigate to="/home" />} />
+                    <Route path="/trading-bill" element={<TradingBill />} />
+                   <Route path="/" element={<Navigate to="/home" />} />
                   </Routes>
                 </div>
               </div>
