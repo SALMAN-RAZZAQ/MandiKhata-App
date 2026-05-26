@@ -3,13 +3,20 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const fetchUser = require('../middleware/fetchUser');
+const adminOnly = require('../middleware/adminOnly');
 
-const JWT_SECRET = process.env.JWT_SECRET; // ✅ Fix #1
+const JWT_SECRET = process.env.JWT_SECRET;
 
-// Route 1: Register
-router.post('/register', async (req, res) => {
+// ✅ FIX: Register route ab sirf Admin kar sakta hai
+// Pehle koi bhi /api/auth/register call karke Admin account bana sakta tha — SECURITY BUG tha
+router.post('/register', fetchUser, adminOnly, async (req, res) => {
   try {
     const { username, password, role } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ message: "Username aur Password dono zaroori hain!" });
+    }
 
     let user = await User.findOne({ username });
     if (user) {
@@ -34,10 +41,14 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Route 2: Login
+// Route 2: Login — yeh open rahega (koi auth nahi chahiye)
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: "Username aur Password dono likhein!" });
+    }
 
     const user = await User.findOne({ username });
     if (!user) {
@@ -53,7 +64,7 @@ router.post('/login', async (req, res) => {
       user: { id: user.id, role: user.role, username: user.username }
     };
     
-    // ✅ Fix #4 — 8 ghante ki expiry
+    // 8 ghante ki expiry
     const authToken = jwt.sign(data, JWT_SECRET, { expiresIn: '8h' });
 
     res.json({ 

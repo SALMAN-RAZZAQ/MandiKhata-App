@@ -16,10 +16,11 @@ import AllParties from './pages/AllParties';
 import Inventory from './pages/Inventory';
 import Home from './components/Home'; 
 import TradingBill from './pages/TradingBill';
+import ChattaReport from './pages/ChattaReport'; // ✅ Naya page sahi se import ho gaya
+
 function App() {
   const isAuthenticated = () => !!localStorage.getItem('token');
   
-  // 🌟 NAYA: Screen aur Sidebar ki state sambhalne ke liye
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
@@ -28,9 +29,9 @@ function App() {
       const mobile = window.innerWidth <= 768;
       setIsMobile(mobile);
       if (mobile) {
-        setIsSidebarOpen(false); // Mobile par default band
+        setIsSidebarOpen(false);
       } else {
-        setIsSidebarOpen(true); // Desktop par default khula
+        setIsSidebarOpen(true);
       }
     };
     window.addEventListener('resize', handleResize);
@@ -44,7 +45,6 @@ function App() {
         
         <Route path="/*" element={
           isAuthenticated() ? (
-            // 🌟 NAYA: Naya App Container jo display flex use karta hai
             <div className="app-container">
               
               {/* Left Sidebar */}
@@ -61,36 +61,38 @@ function App() {
               {/* Right Side Main Content */}
               <div className="main-content">
                 
-                {/* 🌟 CHOTA SA HEADER (Toggle Button ke liye) */}
+                {/* Header with Toggle Button */}
                 <div style={{ padding: '10px 20px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center' }}>
-                  
-                 <button className="toggle-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-                  ☰
-                 </button>
+                  <button className="toggle-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+                    ☰
+                  </button>
                   <h4 style={{ margin: '0 0 0 15px', color: '#042e12', fontWeight: 'bold' }}>
                     🌾 Mandi Khata
                   </h4>
                 </div>
 
-                {/* Yahan saare pages load honge (Scrollable Area) */}
+                {/* Pages load honge yahan */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                   <Routes>
-                    <Route path="/home" element={<Home />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/auction" element={<AuctionEntry />} />
-                    <Route path="/pakka-khata" element={<PakkaKhata />} />
-                    <Route path="/trading-bill" element={<TradingBill />} />
-                    <Route path="/rokar" element={<Rokar />} />
-                    <Route path="/parta-bill" element={<PartaBill />} />
+                    <Route path="/home"           element={<Home />} />
+                    <Route path="/dashboard"      element={<Dashboard />} />
+                    <Route path="/auction"        element={<AuctionEntry />} />
+                    <Route path="/pakka-khata"    element={<PakkaKhata />} />
+                    <Route path="/trading-bill"   element={<TradingBill />} />
+                    <Route path="/rokar"          element={<Rokar />} />
+                    <Route path="/parta-bill"     element={<PartaBill />} />
                     <Route path="/journal-voucher" element={<JournalVoucher />} />
-                    <Route path="/all-parties" element={<AllParties />} />
+                    <Route path="/all-parties"    element={<AllParties />} />
                     <Route path="/parcha-history" element={<ParchaHistory />} />
-                    <Route path="/parta-history" element={<PartaHistory />} />
-                    <Route path="/inventory" element={<Inventory />} />
-                    <Route path="/settings" element={<KhataSettings />} />
-                    <Route path="/reports" element={<Reports />} />
-                    <Route path="/trading-bill" element={<TradingBill />} />
-                   <Route path="/" element={<Navigate to="/home" />} />
+                    <Route path="/parta-history"  element={<PartaHistory />} />
+                    <Route path="/inventory"      element={<Inventory />} />
+                    <Route path="/settings"       element={<KhataSettings />} />
+                    <Route path="/reports"        element={<Reports />} />
+                    
+                    {/* ✅ JSX comment error fix kar diya hai */}
+                    <Route path="/chatta-report"  element={<ChattaReport />} />
+                    
+                    <Route path="/"               element={<Navigate to="/home" />} />
                   </Routes>
                 </div>
               </div>

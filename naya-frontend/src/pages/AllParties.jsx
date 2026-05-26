@@ -45,11 +45,6 @@ function AllParties() {
     fetchParties();
   }, [navigate]);
 
-  // ==========================================
-  // FILTER AUR SORTING KI LOGIC
-  // ==========================================
-  
-  // 💻 SCREEN KE LIYE: Saari parties rakhein
   let processedParties = [...parties];
 
   if (searchQuery) {
@@ -68,15 +63,12 @@ function AllParties() {
     processedParties.sort((a, b) => Math.abs(a.currentBalance) - Math.abs(b.currentBalance));
   }
 
-  // 🧮 Summary Totals (Point wali values ko round off karke total karna)
   const totalJama = processedParties.filter(p => p.balanceType === 'Jama').reduce((acc, p) => acc + Math.round(Math.abs(p.currentBalance || 0)), 0);
   const totalNaam = processedParties.filter(p => p.balanceType === 'Naam').reduce((acc, p) => acc + Math.round(Math.abs(p.currentBalance || 0)), 0);
 
-  // 🛑 🖨️ BUG FIX (BULLETPROOF PRINT FILTER): 
-  // Agar kisi ka balance 1 Rupaye se kam hai (0.001 waghera), toh usay lazmi nikal do!
   const partiesToPrint = processedParties.filter(p => {
     const bal = Math.abs(parseFloat(p.currentBalance || 0));
-    return bal >= 1; // <-- YAHAN HAI ASAL JADOO (Kam az kam 1 Rs hona zaroori hai)
+    return bal >= 1; 
   });
 
   const currentDate = new Date().toLocaleDateString('en-GB');
@@ -94,9 +86,6 @@ function AllParties() {
         }
       `}</style>
 
-      {/* ================================================ */}
-      {/* 💻 SCREEN VIEW */}
-      {/* ================================================ */}
       <div className="screen-only" style={{ padding: '30px', fontFamily: 'Arial, sans-serif' }}>
         <h2 style={{ color: '#000080', borderBottom: '2px solid #000080', paddingBottom: '10px' }}>
           👥 Saari Parties Ka Hissab (All Parties List)
@@ -163,7 +152,6 @@ function AllParties() {
               ) : (
                 processedParties.map((party, index) => {
                   
-                  // Screen calculation: 1 rupaye se kam ko strictly 0 dikhao
                   const rawBal = Math.abs(parseFloat(party.currentBalance || 0));
                   const displayBal = rawBal < 1 ? 0 : Math.round(rawBal);
                   const isZero = displayBal === 0;
@@ -198,9 +186,6 @@ function AllParties() {
         </div>
       </div>
 
-      {/* ================================================ */}
-      {/* 🖨️ PRINT VIEW */}
-      {/* ================================================ */}
       <div className="print-only urdu-text" dir="rtl" style={{ backgroundColor: 'white', color: '#000' }}>
         <div className="d-flex justify-content-between align-items-center border-bottom border-dark pb-2 mb-2">
           <div style={{ width: '40%' }}><h2 className="mb-0 fw-bold" style={{ color: '#000080' }}>{DUKAN_INFO.nameUrdu}</h2><p className="mb-0 fw-bold">{DUKAN_INFO.addressUrdu}</p></div>

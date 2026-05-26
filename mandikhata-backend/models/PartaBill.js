@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const PartaBillSchema = new mongoose.Schema({
   partaNo: { type: String, required: true, unique: true },
-  transactionType: { type: String, default: 'Baich_Kharidar' }, // ✅ NAYA: Khareed ya Baich
+ transactionType: {type: String,required: true }, // ✅ NAYA: Khareed ya Baich
   customerName: { type: String, required: true },
   khataCategory: { type: String },
   partyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Party' },

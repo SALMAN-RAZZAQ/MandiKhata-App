@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Select from 'react-select'; // ✅ NAYA: High-performance dropdown
+import Select from 'react-select'; 
 
 function PakkaKhata() {
   const [partyData, setPartyData] = useState(null);
@@ -9,7 +9,6 @@ function PakkaKhata() {
   const navigate = useNavigate();
   const getToken = () => localStorage.getItem('token');
 
-  // ✅ NAYA: Partiyan load karna
   useEffect(() => {
     const fetchParties = async () => {
       try {
@@ -18,7 +17,6 @@ function PakkaKhata() {
         });
         if (response.ok) {
           const data = await response.json();
-          // Dropdown ke liye format: "1001 - Gaffar"
           const formatted = data.map(p => ({
             value: p.name,
             label: `${p.khataIndex || 'N/A'} - ${p.name}`
@@ -32,7 +30,6 @@ function PakkaKhata() {
     fetchParties();
   }, []);
 
-  // ✅ NAYA: Smart Search Function
   const searchKhata = async (selectedOption) => {
     if (!selectedOption) return;
     
@@ -65,7 +62,7 @@ function PakkaKhata() {
     }
   };
 
-  // Hisaab Kitab (Totals)
+  // 🔥 FIX: Hisaab Kitab (Dynamic Calculation)
   let totalJama = 0;    
   let totalNaam = 0; 
 
@@ -76,24 +73,26 @@ function PakkaKhata() {
     });
   }
 
-  const netBalance = partyData ? partyData.currentBalance : 0;
+  // 🚀 NAYA SMART FORMULA: Database ke bajaye real-time minus karega
+  const calculatedDifference = totalJama - totalNaam;
+  const netBalance = Math.abs(calculatedDifference);
+
   let balanceStatus = "";
   let balanceColor = "";
 
-  if (partyData && partyData.currentBalance !== 0) {
-    if (partyData.balanceType === 'Jama') {
-      balanceStatus = "Aapne Dene Hain (Payable)";
-      balanceColor = "#dc3545"; // Laal rang
-    } else {
-      balanceStatus = "Aapne Lene Hain (Receivable)";
-      balanceColor = "#198754"; // Sabz rang
-    }
+  if (calculatedDifference > 0) {
+    // Agar Jama zyada hai (Credit > Debit) -> Dukan ne paise dene hain
+    balanceStatus = "Aapne Dene Hain (Payable)";
+    balanceColor = "#dc3545"; // Laal rang
+  } else if (calculatedDifference < 0) {
+    // Agar Naam zyada hai (Debit > Credit) -> Dukan ne paise lene hain
+    balanceStatus = "Aapne Lene Hain (Receivable)";
+    balanceColor = "#198754"; // Sabz rang
   } else {
     balanceStatus = "Hisaab Nil (Barabar)";
     balanceColor = "#000080"; // Neela rang
   }
 
-  // React Select Style
   const selectStyles = {
     control: (base) => ({
       ...base,
@@ -111,7 +110,6 @@ function PakkaKhata() {
       <h2 style={{ textAlign: 'center', color: '#000080' }}>📒 Pakka Khata (سنگل پارٹی لیجر)</h2>
       <p style={{ textAlign: 'center', color: '#666' }}>Kisi bhi Kisan, Beopari ya Khate ka naam likh kar uski poori history dekhein.</p>
 
-      {/* SEARCH BAR */}
       <div style={{ backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '8px', borderTop: '4px solid #198754', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
         <label style={{ fontWeight: 'bold', fontSize: '18px' }}>🔍 Party ka Naam Likhein:</label>
         <div style={{ marginTop: '10px' }}>
@@ -127,7 +125,6 @@ function PakkaKhata() {
         </div>
       </div>
 
-      {/* RESULTS TABLE */}
       {partyData && (
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
           <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
@@ -170,15 +167,15 @@ function PakkaKhata() {
 
           {/* TOTALS BOX */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px', padding: '15px', backgroundColor: '#e8f4fd', borderRadius: '5px', border: '1px solid #b3d7ff' }}>
-            <div style={{ fontSize: '18px' }}><strong>Total Jama (In):</strong> <span style={{ color: '#198754' }}>Rs. {totalJama.toLocaleString()}</span></div>
-            <div style={{ fontSize: '18px' }}><strong>Total Naam/Adaigi (Out):</strong> <span style={{ color: '#dc3545' }}>Rs. {totalNaam.toLocaleString()}</span></div>
+            <div style={{ fontSize: '18px' }}><strong>Total Jama (In):</strong> <span style={{ color: '#198754' }}>Rs. {totalJama.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+            <div style={{ fontSize: '18px' }}><strong>Total Naam/Adaigi (Out):</strong> <span style={{ color: '#dc3545' }}>Rs. {totalNaam.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
           </div>
 
           {/* BAQAYA BALANCE KA BARA DABBA */}
           <div style={{ marginTop: '15px', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: `3px solid ${balanceColor}`, textAlign: 'center', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 10px 0', color: '#666' }}>صافی بقایا (Net Balance)</h3>
             <h1 style={{ margin: '0', fontSize: '36px', color: balanceColor }}>
-              Rs. {Math.abs(netBalance).toLocaleString()}
+              Rs. {netBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </h1>
             <h2 style={{ margin: '10px 0 0 0', color: balanceColor, backgroundColor: balanceColor + '1A', display: 'inline-block', padding: '5px 15px', borderRadius: '20px' }}>
               {balanceStatus}

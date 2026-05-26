@@ -19,18 +19,43 @@ const getNextSequenceValue = async (sequenceName) => {
   return sequenceDocument.seq;
 };
 
-// 🚀 ✅ NAYA HELPER: Session (Locker) support ke sath
 const getNextKhataIndex = async (session = null) => {
   let query = Party.findOne().sort({ khataIndex: -1 });
   if (session) {
-    query = query.session(session); // Transaction locker mein check karega
+    query = query.session(session); 
   }
   const lastParty = await query;
   return (lastParty && lastParty.khataIndex) ? lastParty.khataIndex + 1 : 1001;
 };
 
+// 🔥 100% Accurate Balance Calculator
+async function updatePartyBalance(partyId, debitAmount, creditAmount, session) {
+    const party = await Party.findById(partyId).session(session);
+    if (!party) return;
+    
+    let balance = party.currentBalance || 0;
+    let type = party.balanceType || 'Naam';
+
+    let signedBalance = type === 'Jama' ? balance : -balance;
+
+    signedBalance += creditAmount; 
+    signedBalance -= debitAmount;  
+
+    if (signedBalance > 0) {
+        party.currentBalance = signedBalance;
+        party.balanceType = 'Jama';
+    } else if (signedBalance < 0) {
+        party.currentBalance = Math.abs(signedBalance);
+        party.balanceType = 'Naam';
+    } else {
+        party.currentBalance = 0;
+        party.balanceType = 'Naam';
+    }
+    await party.save({ session });
+}
+
 // =========================================
-// Route 1: Naya Parta Bill (Khareed & Baich Logic + Mazdoori Transfer)
+// Route 1: Naya Parta Bill (Khareed & Baich)
 // =========================================
 router.post('/add', fetchUser, async (req, res) => {
   const session = await mongoose.startSession();
@@ -38,14 +63,14 @@ router.post('/add', fetchUser, async (req, res) => {
 
   try {
     const {
-      transactionType, 
-      customerName, khataCategory, items,
+      transactionType, customerName, khataCategory, items,
       commPercent, commAmount, mazdooriAmount,
       marketFeeAmount, damiPercent, damiAmount, details
     } = req.body;
 
-    if (!customerName) throw new Error('Customer ka naam zaroori hai!');
-    if (!items || items.length === 0) throw new Error('Kam az kam ek fasal zaroori hai!');
+    if (!transactionType) throw new Error('❌ Transaction Type select karna zaroori hai!');
+    if (!customerName) throw new Error('❌ Customer ka naam zaroori hai!');
+    if (!items || items.length === 0) throw new Error('❌ Kam az kam ek fasal zaroori hai!');
 
     for (let item of items) {
       if (Number(item.weight) < 0 || Number(item.rate) < 0 || Number(item.amount) < 0) {
@@ -71,55 +96,99 @@ router.post('/add', fetchUser, async (req, res) => {
 
     let party = await Party.findOne({ name: customerName }).session(session);
     if (!party) {
-      // ✅ FIX: brackets mein 'session' likha gaya hai
       const nextIndex = await getNextKhataIndex(session);
-      party = new Party({ name: customerName, partyType: khataCategory || 'Kisan', khataIndex: nextIndex, currentBalance: 0 });
+      party = new Party({ name: customerName, partyType: khataCategory || 'Kisan', khataIndex: nextIndex, currentBalance: 0, balanceType: 'Naam' });
+      await party.save({ session });
     }
-
-    if (transactionType === 'Baich_Kharidar') party.currentBalance -= netAmount; 
-    else party.currentBalance += netAmount; 
-    
-    party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam';
-    await party.save({ session });
 
     const nextSeq = await getNextSequenceValue('parta');
     const finalPartaNo = 'PRT-' + nextSeq;
 
     const newBill = new PartaBill({
       partaNo: finalPartaNo, transactionType, customerName, khataCategory: khataCategory || 'Kisan',
-      partyId: party._id, items, grossAmount, commPercent: Number(commPercent) || 0, commAmount: Number(commAmount) || 0,
+      partyId: party._id, items, grossAmount, 
+      commPercent: Number(commPercent) || 0, commAmount: Number(commAmount) || 0,
       mazdooriAmount: Number(mazdooriAmount) || 0, marketFeeAmount: Number(marketFeeAmount) || 0,
       damiPercent: Number(damiPercent) || 0, damiAmount: Number(damiAmount) || 0,
       totalDeductions: totalExpenses, netAmount, details: details || ''
     });
     await newBill.save({ session });
 
+    const debitAmt = transactionType === 'Baich_Kharidar' ? netAmount : 0;
+    const creditAmt = transactionType !== 'Baich_Kharidar' ? netAmount : 0;
+
     await new Transaction({
-      voucherNo: finalPartaNo, date: Date.now(), transactionType: transactionType || 'Parta Bill',
+      voucherNo: finalPartaNo, date: Date.now(), transactionType,
       khataCategory: khataCategory || 'Kisan', partyId: party._id, partyName: customerName,
-      debit: transactionType === 'Baich_Kharidar' ? netAmount : 0,
-      credit: transactionType !== 'Baich_Kharidar' ? netAmount : 0,
+      debit: debitAmt, credit: creditAmt,
       details: `Parta Bill: ${finalPartaNo} — Items: ${items.length}`
     }).save({ session });
 
-    // 🚀 ✅ MAZDOORI AUTO-TRANSFER LOGIC (Fixed Category Name)
+    await updatePartyBalance(party._id, debitAmt, creditAmt, session);
+
+    // 🚀 EXPENSES & INCOME AUTO-TRANSFER LOGIC
+    // 1. Mazdoori
     if (Number(mazdooriAmount) > 0) {
       let palledar = await Party.findOne({ name: 'Palledar Khata' }).session(session);
       if (!palledar) {
-        // ✅ FIX: brackets mein 'session' likha gaya hai
         const pNextIndex = await getNextKhataIndex(session);
-        palledar = new Party({ name: 'Palledar Khata', partyType: 'Staff/Labour(لیبر)', khataIndex: pNextIndex, currentBalance: 0 });
+        palledar = new Party({ name: 'Palledar Khata', partyType: 'Staff/Labour(لیبر)', khataIndex: pNextIndex, currentBalance: 0, balanceType: 'Jama' });
+        await palledar.save({ session });
       }
-      palledar.currentBalance += Number(mazdooriAmount); 
-      palledar.balanceType = palledar.currentBalance >= 0 ? 'Jama' : 'Naam';
-      await palledar.save({ session });
-
       await new Transaction({
           voucherNo: finalPartaNo, date: Date.now(), transactionType: 'Mazdoori',
           khataCategory: palledar.partyType, partyId: palledar._id, partyName: palledar.name,
-          debit: 0, credit: Number(mazdooriAmount), 
-          details: `Mazdoori Parta Bill: ${finalPartaNo}`
+          debit: 0, credit: Number(mazdooriAmount), details: `Mazdoori Parta Bill: ${finalPartaNo}`
       }).save({ session });
+      await updatePartyBalance(palledar._id, 0, Number(mazdooriAmount), session);
+    }
+
+    // 2. Market Fee
+    if (Number(marketFeeAmount) > 0) {
+      let feeParty = await Party.findOne({ name: 'Market Committee Khata' }).session(session);
+      if (!feeParty) {
+        const pNextIndex = await getNextKhataIndex(session);
+        feeParty = new Party({ name: 'Market Committee Khata', partyType: 'Expense', khataIndex: pNextIndex, currentBalance: 0, balanceType: 'Jama' });
+        await feeParty.save({ session });
+      }
+      await new Transaction({
+          voucherNo: finalPartaNo, date: Date.now(), transactionType: 'Expense',
+          khataCategory: feeParty.partyType, partyId: feeParty._id, partyName: feeParty.name,
+          debit: 0, credit: Number(marketFeeAmount), details: `Market Fee Parta Bill: ${finalPartaNo}`
+      }).save({ session });
+      await updatePartyBalance(feeParty._id, 0, Number(marketFeeAmount), session);
+    }
+
+    // 3. Commission (Income)
+    if (Number(commAmount) > 0) {
+      let commParty = await Party.findOne({ name: 'Commission Khata' }).session(session);
+      if (!commParty) {
+        const pNextIndex = await getNextKhataIndex(session);
+        commParty = new Party({ name: 'Commission Khata', partyType: 'Income (Kamai)', khataIndex: pNextIndex, currentBalance: 0, balanceType: 'Jama' });
+        await commParty.save({ session });
+      }
+      await new Transaction({
+          voucherNo: finalPartaNo, date: Date.now(), transactionType: 'Income',
+          khataCategory: commParty.partyType, partyId: commParty._id, partyName: commParty.name,
+          debit: 0, credit: Number(commAmount), details: `Commission Parta Bill: ${finalPartaNo}`
+      }).save({ session });
+      await updatePartyBalance(commParty._id, 0, Number(commAmount), session);
+    }
+
+    // 4. Dami (Income)
+    if (Number(damiAmount) > 0) {
+      let damiParty = await Party.findOne({ name: 'Dami Khata' }).session(session);
+      if (!damiParty) {
+        const pNextIndex = await getNextKhataIndex(session);
+        damiParty = new Party({ name: 'Dami Khata', partyType: 'Income (Kamai)', khataIndex: pNextIndex, currentBalance: 0, balanceType: 'Jama' });
+        await damiParty.save({ session });
+      }
+      await new Transaction({
+          voucherNo: finalPartaNo, date: Date.now(), transactionType: 'Income',
+          khataCategory: damiParty.partyType, partyId: damiParty._id, partyName: damiParty.name,
+          debit: 0, credit: Number(damiAmount), details: `Dami Parta Bill: ${finalPartaNo}`
+      }).save({ session });
+      await updatePartyBalance(damiParty._id, 0, Number(damiAmount), session);
     }
 
     await session.commitTransaction();
@@ -164,21 +233,28 @@ router.delete('/delete/:id', fetchUser, adminOnly, async (req, res) => {
     const bill = await PartaBill.findById(req.params.id).session(session);
     if (!bill) throw new Error('Bill nahi mila!');
 
-    const party = await Party.findById(bill.partyId).session(session);
-    if (party) {
-      if (bill.transactionType === 'Baich_Kharidar') party.currentBalance += bill.netAmount; 
-      else party.currentBalance -= bill.netAmount; 
-      party.balanceType = party.currentBalance >= 0 ? 'Jama' : 'Naam';
-      await party.save({ session });
-    }
+    const debitAmt = bill.transactionType === 'Baich_Kharidar' ? bill.netAmount : 0;
+    const creditAmt = bill.transactionType !== 'Baich_Kharidar' ? bill.netAmount : 0;
+    
+    // Reverse Main Balance
+    await updatePartyBalance(bill.partyId, creditAmt, debitAmt, session);
 
+    // Reverse Expenses & Incomes
     if (bill.mazdooriAmount && bill.mazdooriAmount > 0) {
       let palledar = await Party.findOne({ name: 'Palledar Khata' }).session(session);
-      if (palledar) {
-        palledar.currentBalance -= bill.mazdooriAmount; 
-        palledar.balanceType = palledar.currentBalance >= 0 ? 'Jama' : 'Naam';
-        await palledar.save({ session });
-      }
+      if (palledar) await updatePartyBalance(palledar._id, bill.mazdooriAmount, 0, session);
+    }
+    if (bill.marketFeeAmount && bill.marketFeeAmount > 0) {
+      let feeParty = await Party.findOne({ name: 'Market Committee Khata' }).session(session);
+      if (feeParty) await updatePartyBalance(feeParty._id, bill.marketFeeAmount, 0, session);
+    }
+    if (bill.commAmount && bill.commAmount > 0) {
+      let commParty = await Party.findOne({ name: 'Commission Khata' }).session(session);
+      if (commParty) await updatePartyBalance(commParty._id, bill.commAmount, 0, session);
+    }
+    if (bill.damiAmount && bill.damiAmount > 0) {
+      let damiParty = await Party.findOne({ name: 'Dami Khata' }).session(session);
+      if (damiParty) await updatePartyBalance(damiParty._id, bill.damiAmount, 0, session);
     }
 
     for (let item of bill.items) {

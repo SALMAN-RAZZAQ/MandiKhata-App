@@ -24,7 +24,6 @@ function PartaHistory() {
       if (toDate) query += `to=${toDate}&`;
       if (searchName) query += `customerName=${searchName}`;
 
-      // 🔥 FIX: Yahan 'trading' ka 't' small kar diya hai taake API sahi hit ho!
       const [partaRes, tradingRes] = await Promise.all([
         fetch(`/api/parta/all${query}`, { headers: { 'auth-token': getToken() } }),
         fetch(`/api/trading/all${query}`, { headers: { 'auth-token': getToken() } })
@@ -36,7 +35,6 @@ function PartaHistory() {
       if (partaRes.ok) partaData = await partaRes.json();
       if (tradingRes.ok) tradingData = await tradingRes.json();
 
-      // Merge and Format
       const combined = [
         ...partaData.map(b => ({ ...b, type: 'Parta', displayDate: b.createdAt })),
         ...tradingData.map(b => ({ ...b, type: 'Trading', displayDate: b.date }))
@@ -75,7 +73,6 @@ function PartaHistory() {
     }
   };
 
-  // ✅ PRINT HANDLER
   const handlePrint = (bill) => {
     setSelectedBill(bill);
     setPrintType(bill.type);
@@ -84,7 +81,6 @@ function PartaHistory() {
     }, 200);
   };
 
-  // Helpers for Print Templates
   const formatRs = (num) => Number(num || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   const getMaundKilo = (totalKg) => {
     if (!totalKg || isNaN(totalKg)) return "0 من 0 کلو";
@@ -112,7 +108,6 @@ function PartaHistory() {
           📜 Purane Bills History (Parta & Trading)
         </h2>
 
-        {/* FILTER SECTION */}
         <div style={{ display: 'flex', gap: '15px', backgroundColor: '#e8f4fd', padding: '15px', borderRadius: '8px', border: '1px solid #b3d7ff', marginBottom: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <label style={{ fontWeight: 'bold' }}>Kab Se:</label>
@@ -130,7 +125,6 @@ function PartaHistory() {
           <button onClick={() => { setFromDate(''); setToDate(''); setSearchName(''); setTimeout(fetchBills, 100); }} style={{ padding: '10px 15px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 Clear</button>
         </div>
 
-        {/* BILLS TABLE */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -138,8 +132,8 @@ function PartaHistory() {
                 <th style={thStyle}>Date</th>
                 <th style={thStyle}>Type</th>
                 <th style={thStyle}>Bill No.</th>
-                <th style={thStyle}>Customer Name</th>
-                <th style={thStyle}>Khata</th>
+                <th style={thStyle}>Party Name(s)</th>
+                <th style={thStyle}>Khata Category</th>
                 <th style={thStyle}>Items</th>
                 <th style={thStyle}>Net Amount</th>
                 <th style={thStyle}>Actions</th>
@@ -153,21 +147,41 @@ function PartaHistory() {
               ) : (
                 bills.map(bill => {
                   const isParta = bill.type === 'Parta';
-                  const billNo = isParta ? bill.partaNo : `TRD-${bill._id.slice(-6).toUpperCase()}`;
-                  const cName = isParta ? bill.customerName : bill.clientName;
-                  const kCat = isParta ? bill.khataCategory : bill.clientCategory;
+                  
+                  let billNo, cName, kCat, badgeText, badgeColor;
+
+                  if (isParta) {
+                    billNo = bill.partaNo;
+                    cName = bill.customerName;
+                    kCat = bill.khataCategory;
+                    badgeText = 'پکا بل';
+                    badgeColor = '#0d6efd';
+                  } else {
+                    if (bill.billType === 'Purchase') {
+                      billNo = `TRD-PUR-${bill._id.slice(-5).toUpperCase()}`;
+                      cName = bill.entries?.map(e => e.shopName).filter(Boolean).join(', ') || '---';
+                      kCat = bill.shopCategory || '---'; // ✅ FIX: Purchase Khata Category
+                      badgeText = 'Trading (Purchase)';
+                      badgeColor = '#b45309';
+                    } else {
+                      billNo = `TRD-SAL-${bill._id.slice(-5).toUpperCase()}`;
+                      cName = bill.clientName;
+                      kCat = bill.clientCategory || '---'; // ✅ FIX: Sale Khata Category
+                      badgeText = 'Trading (Sale)';
+                      badgeColor = '#198754'; 
+                    }
+                  }
+
                   const iCount = isParta ? bill.items.length : bill.entries.length;
                   const netAmt = isParta ? bill.netAmount : bill.totals?.finalNetCost;
 
                   return (
                     <tr key={bill._id} style={{ borderBottom: '1px solid #eee' }}>
                       <td style={tdStyle}>{new Date(bill.displayDate).toLocaleDateString('en-GB')}</td>
-                      <td style={{ ...tdStyle, fontWeight: 'bold', color: isParta ? '#0d6efd' : '#198754' }}>
-                        {isParta ? 'پکا بل' : 'ٹریڈنگ بل'}
-                      </td>
+                      <td style={{ ...tdStyle, fontWeight: 'bold', color: badgeColor }}>{badgeText}</td>
                       <td style={{ ...tdStyle, color: '#000080', fontWeight: 'bold' }}>{billNo}</td>
                       <td style={{ ...tdStyle, fontWeight: 'bold' }}>{cName}</td>
-                      <td style={tdStyle}>{kCat || '---'}</td>
+                      <td style={tdStyle}>{kCat}</td>
                       <td style={tdStyle}>{iCount} Items</td>
                       <td style={{ ...tdStyle, color: '#198754', fontWeight: 'bold', fontSize: '16px' }}>
                         Rs. {formatRs(netAmt)}
@@ -187,16 +201,18 @@ function PartaHistory() {
         </div>
       </div>
 
-      {/* ========================================================
-          PRINT ONLY AREA (DYNAMIC RENDER BASED ON SELECTED BILL)
-          ======================================================== */}
+      {/* PRINT AREA */}
       {selectedBill && (
         <div className="print-only urdu-text" dir="rtl" style={{ backgroundColor: 'white', color: '#000' }}>
           
           <div className="d-flex justify-content-between align-items-center border-bottom border-dark pb-2 mb-2">
-            <div style={{ width: '40%' }}><h2 className="mb-0 fw-bold" style={{ color: '#000080' }}>میاں علی محمد اینڈ سنز</h2><p className="mb-0 fw-bold">دوکان نمبر 74/G غلہ منڈی بورے والا</p></div>
-            <div className="text-center" style={{ width: '20%' }}><span style={{ fontSize: '30px' }}>🌾</span></div>
-            <div dir="ltr" style={{ width: '40%', textAlign: 'left' }}><h4 className="mb-0 fw-bold" style={{ color: '#000080', fontFamily: 'Arial' }}>Mian Ali Muhammad & Sons</h4><p className="mb-0 fw-bold" style={{ fontFamily: 'Arial' }}>74/G, Grain Market Burewala</p></div>
+            <div style={{ width: '35%' }}><h2 className="mb-0 fw-bold" style={{ color: '#000080' }}>میاں علی محمد اینڈ سنز</h2><p className="mb-0 fw-bold">دوکان نمبر 74/G غلہ منڈی بورے والا</p></div>
+            <div className="text-center" style={{ width: '30%' }}>
+              <span style={{ fontSize: '30px', fontWeight:'bold', border:'2px solid black', padding:'5px 15px', borderRadius:'10px' }}>
+                {printType === 'Parta' ? 'پکا بل' : (selectedBill.billType === 'Purchase' ? 'بل خریداری' : 'بل فروخت')}
+              </span>
+            </div>
+            <div dir="ltr" style={{ width: '35%', textAlign: 'left' }}><h4 className="mb-0 fw-bold" style={{ color: '#000080', fontFamily: 'Arial' }}>Mian Ali Muhammad & Sons</h4><p className="mb-0 fw-bold" style={{ fontFamily: 'Arial' }}>74/G, Grain Market Burewala</p></div>
           </div>
           
           <div className="d-flex justify-content-between border-bottom border-dark pb-2 mb-3 fs-6">
@@ -205,7 +221,6 @@ function PartaHistory() {
           </div>
           
           {printType === 'Parta' ? (
-            /* ------------------ PARTA BILL PRINT LAYOUT ------------------ */
             <>
               <div className="d-flex justify-content-between mb-3 fs-5">
                 <div><b>بل بنام:</b> <u style={{ fontFamily: 'Arial', marginRight: '10px' }}>{selectedBill.customerName} ({selectedBill.khataCategory})</u></div>
@@ -254,30 +269,35 @@ function PartaHistory() {
                   </tr>
                   <tr style={{ backgroundColor: '#f0fff0' }}>
                     <td colSpan="3" className="text-start urdu-text fs-4 fw-bold border-dark">نیٹ صافی رقم:</td>
-                    <td className="fs-4 fw-bold border-dark" dir="ltr" style={{ color: '#198754' }}>
-                      {formatRs(selectedBill.netAmount)}
-                    </td>
+                    <td className="fs-4 fw-bold border-dark" dir="ltr" style={{ color: '#198754' }}>{formatRs(selectedBill.netAmount)}</td>
                   </tr>
                 </tbody>
               </table>
             </>
           ) : (
-            /* ------------------ TRADING BILL PRINT LAYOUT ------------------ */
             <>
               <div className="d-flex justify-content-between mb-3 fs-5">
-                <div><b>خریدار (Client):</b> <u style={{ fontFamily: 'Arial', marginRight: '10px' }}>{selectedBill.clientName} ({selectedBill.clientCategory || '---'})</u></div>
-                <div dir="ltr"><span className="urdu-text fw-bold">جنس (Crop):</span> <b style={{ fontFamily: 'Arial' }}>{selectedBill.jins} (بھرتی: {selectedBill.bharti} Kg)</b></div>
+                {selectedBill.billType === 'Purchase' ? (
+                   <div><b>اسٹاک انٹری (خریداری)</b> - کیٹیگری: <u style={{ fontFamily: 'Arial' }}>{selectedBill.shopCategory || '---'}</u></div>
+                ) : (
+                   <div><b>خریدار (Client):</b> <u style={{ fontFamily: 'Arial', marginRight: '10px' }}>{selectedBill.clientName} ({selectedBill.clientCategory || '---'})</u></div>
+                )}
+                <div dir="ltr">
+                  <span className="urdu-text fw-bold">جنس (Crop):</span> 
+                  <b style={{ fontFamily: 'Arial' }}> {selectedBill.jins} {selectedBill.billType === 'Sale' && `(بھرتی: ${selectedBill.bharti} Kg)`}</b>
+                </div>
                 <div><b>تاریخ:</b> <u style={{ fontFamily: 'Arial', marginRight: '10px' }}>{new Date(selectedBill.date).toLocaleDateString('en-GB')}</u></div>
               </div>
               <table className="table table-bordered border-dark border-2 text-center align-middle mb-0">
                 <thead>
                   <tr className="fs-5" style={{ backgroundColor: '#f2f2f2' }}>
                     <th className="border-dark">نمبر</th>
-                    <th className="border-dark">دکان / آڑھتی کا نام</th>
+                    {selectedBill.billType === 'Purchase' && <th className="border-dark">دکان / آڑھتی کا نام</th>}
+                    <th className="border-dark">بھرتی (Kg)</th>
                     <th className="border-dark">وزن (Kg)</th>
                     <th className="border-dark">من و کلو</th>
                     <th className="border-dark">ریٹ (من)</th>
-                    <th className="border-dark">ڈامی (%)</th>
+                    {selectedBill.billType === 'Purchase' && <th className="border-dark">ڈامی (%)</th>}
                     <th className="border-dark">رقم</th>
                   </tr>
                 </thead>
@@ -285,16 +305,17 @@ function PartaHistory() {
                   {selectedBill.entries.map((item, index) => (
                     <tr key={index}>
                       <td className="urdu-text border-dark">{index + 1}</td>
-                      <td className="urdu-text border-dark text-end">{item.shopName || '---'}</td>
+                      {selectedBill.billType === 'Purchase' && <td className="urdu-text border-dark text-end">{item.shopName || '---'}</td>}
+                      <td className="border-dark fw-bold" dir="ltr">{selectedBill.billType === 'Purchase' ? item.bharti : selectedBill.bharti}</td>
                       <td className="border-dark fw-bold" dir="ltr">{item.weight}</td>
                       <td className="border-dark fw-bold urdu-text">{getMaundKilo(item.weight)}</td>
                       <td className="border-dark">{formatRs(item.rate)}</td>
-                      <td className="border-dark">{item.damiPercent}%</td>
+                      {selectedBill.billType === 'Purchase' && <td className="border-dark">{item.damiPercent}%</td>}
                       <td className="border-dark" dir="ltr">{formatRs(item.rowTotal)}</td>
                     </tr>
                   ))}
                   <tr>
-                    <td colSpan="4" className="text-start urdu-text border-dark p-2" dir="rtl" style={{ lineHeight: '1.8' }}>
+                    <td colSpan={selectedBill.billType === 'Purchase' ? "5" : "4"} className="text-start urdu-text border-dark p-2" dir="rtl" style={{ lineHeight: '1.8' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', paddingRight: '20px', width: '70%' }}>
                         <span>کل وزن: <strong>{selectedBill.totals?.totalWeight?.toFixed(2)} Kg ({getMaundKilo(selectedBill.totals?.totalWeight)})</strong></span>
                         <span>کل نگ (بوریاں): <strong>{selectedBill.totals?.totalBags?.toFixed(2)}</strong></span>
@@ -304,17 +325,19 @@ function PartaHistory() {
                       {selectedBill.totals?.totalLabour > 0 && <div>مزدوری / لیبر: <span dir="ltr">{formatRs(selectedBill.totals.totalLabour)}</span></div>}
                       {selectedBill.totals?.totalFreight > 0 && <div>کرایہ / فریٹ: <span dir="ltr">{formatRs(selectedBill.totals.totalFreight)}</span></div>}
                       {selectedBill.totals?.totalMarketFee > 0 && <div>مارکیٹ فیس: <span dir="ltr">{formatRs(selectedBill.totals.totalMarketFee)}</span></div>}
-                      {selectedBill.totals?.totalCommission > 0 && <div>آپ کا کمیشن: <span dir="ltr">{formatRs(selectedBill.totals.totalCommission)}</span></div>}
+                      {selectedBill.totals?.totalCommission > 0 && <div>کمیشن: <span dir="ltr">{formatRs(selectedBill.totals.totalCommission)}</span></div>}
+                      {selectedBill.totals?.clientDamiAmount > 0 && <div>ڈامی (Client): <span dir="ltr">{formatRs(selectedBill.totals.clientDamiAmount)}</span></div>}
                     </td>
                     <td colSpan="2" className="urdu-text fw-bold border-dark fs-5 align-middle">کل اخراجات</td>
                     <td className="border-dark fw-bold fs-5 align-middle" dir="ltr" style={{ color: '#000080' }}>
                       + {formatRs(
                         (selectedBill.totals?.totalDamiAmount || 0) + (selectedBill.totals?.totalLabour || 0) + 
                         (selectedBill.totals?.totalFreight || 0) + (selectedBill.totals?.totalMarketFee || 0) + 
-                        (selectedBill.totals?.totalCommission || 0)
+                        (selectedBill.totals?.totalCommission || 0) + (selectedBill.totals?.clientDamiAmount || 0)
                       )}
                     </td>
                   </tr>
+                  {selectedBill.billType === 'Sale' && (
                   <tr>
                     <td colSpan="4" className="border-dark text-start p-2">
                        <strong>خرید دار کو فائنل پڑتا ریٹ: Rs {selectedBill.totals?.perMaundCost?.toFixed(2)} / من</strong>
@@ -322,8 +345,9 @@ function PartaHistory() {
                     <td colSpan="2" className="urdu-text fw-bold border-dark fs-5">خالص مال کی قیمت</td>
                     <td className="border-dark fw-bold fs-5" dir="ltr">{formatRs(selectedBill.totals?.totalPurchaseCost)}</td>
                   </tr>
+                  )}
                   <tr style={{ backgroundColor: '#f0fff0' }}>
-                    <td colSpan="6" className="text-start urdu-text fs-4 fw-bold border-dark">نیٹ صافی رقم (Grand Total):</td>
+                    <td colSpan={selectedBill.billType === 'Purchase' ? "7" : "6"} className="text-start urdu-text fs-4 fw-bold border-dark">نیٹ صافی رقم (Grand Total):</td>
                     <td className="fs-4 fw-bold border-dark" dir="ltr" style={{ color: '#198754' }}>
                       {formatRs(selectedBill.totals?.finalNetCost)}
                     </td>
@@ -333,7 +357,6 @@ function PartaHistory() {
             </>
           )}
 
-          {/* Signatures for both */}
           <div className="d-flex justify-content-between mt-5 pt-4">
             <div className="fs-5"><span className="badge bg-dark rounded-pill py-2 px-3 fs-6">نوٹ</span><b className="ms-2">بھول چوک لین دین</b></div>
             <div className="text-center fs-5">____________________<br /><b>دستخط</b></div>
