@@ -250,28 +250,65 @@ router.get('/party/:name', fetchUser, async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Khata load nahi ho saka.' }); }
 });
 
-// 8. SAARI PARTIES KI LIST 
+// 8. SAARI PARTIES KI LIST (🔥 DATE FILTER WALA 🔥)
 router.get('/parties/all', fetchUser, async (req, res) => {
   try {
-    const parties = await Party.find().sort({ name: 1 });
-    let fixedParties = [];
+    const { from, to } = req.query;
 
-    for (let party of parties) {
-      const txs = await Transaction.find({ 
-        $or: [{ partyId: party._id }, { partyName: party.name }] 
-      });
-      let totalJama = 0; let totalNaam = 0;
-      txs.forEach(t => { totalJama += (t.credit || 0); totalNaam += (t.debit || 0); });
-      let diff = totalJama - totalNaam;
-      let actualBalance = Math.abs(diff);
-      let actualType = diff > 0 ? 'Jama' : (diff < 0 ? 'Naam' : 'Naam');
+    if (from && to) {
+      // 📅 DATE FILTER LOGIC
+      const fromDate = new Date(from);
+      const toDate = new Date(new Date(to).setHours(23, 59, 59, 999));
 
-      if (party.currentBalance !== actualBalance || party.balanceType !== actualType) {
-        await Party.updateOne({ _id: party._id }, { $set: { currentBalance: actualBalance, balanceType: actualType } });
+      const txBalances = await Transaction.aggregate([
+        { $match: { date: { $gte: fromDate, $lte: toDate } } },
+        { $group: {
+            _id: "$partyId",
+            totalDebit: { $sum: "$debit" },
+            totalCredit: { $sum: "$credit" }
+        }}
+      ]);
+
+      const parties = await Party.find().lean();
+      let filteredParties = [];
+
+      for (let p of parties) {
+        const tx = txBalances.find(t => t._id && t._id.toString() === p._id.toString());
+        if (tx) {
+            let netBalance = (tx.totalCredit || 0) - (tx.totalDebit || 0);
+            if (netBalance !== 0) {
+                filteredParties.push({
+                    ...p,
+                    currentBalance: Math.abs(netBalance),
+                    balanceType: netBalance > 0 ? 'Jama' : 'Naam'
+                });
+            }
+        }
       }
-      fixedParties.push({ _id: party._id, name: party.name, partyType: party.partyType, currentBalance: actualBalance, balanceType: actualType, khataIndex: party.khataIndex, createdAt: party.createdAt });
+      return res.status(200).json(filteredParties);
+      
+    } else {
+      // 🌍 ALL TIME LOGIC (Original Code)
+      const parties = await Party.find().sort({ name: 1 });
+      let fixedParties = [];
+
+      for (let party of parties) {
+        const txs = await Transaction.find({ 
+          $or: [{ partyId: party._id }, { partyName: party.name }] 
+        });
+        let totalJama = 0; let totalNaam = 0;
+        txs.forEach(t => { totalJama += (t.credit || 0); totalNaam += (t.debit || 0); });
+        let diff = totalJama - totalNaam;
+        let actualBalance = Math.abs(diff);
+        let actualType = diff > 0 ? 'Jama' : (diff < 0 ? 'Naam' : 'Naam');
+
+        if (party.currentBalance !== actualBalance || party.balanceType !== actualType) {
+          await Party.updateOne({ _id: party._id }, { $set: { currentBalance: actualBalance, balanceType: actualType } });
+        }
+        fixedParties.push({ _id: party._id, name: party.name, partyType: party.partyType, currentBalance: actualBalance, balanceType: actualType, khataIndex: party.khataIndex, createdAt: party.createdAt });
+      }
+      res.status(200).json(fixedParties);
     }
-    res.status(200).json(fixedParties);
   } catch (error) { res.status(500).json({ error: 'Parties load nahi ho sakin.' }); }
 });
 

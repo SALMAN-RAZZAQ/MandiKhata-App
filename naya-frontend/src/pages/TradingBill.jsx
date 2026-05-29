@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import CreatableSelect from 'react-select/creatable';
 
 function TradingBill() {
@@ -7,71 +7,63 @@ function TradingBill() {
   const shouldPrint = useRef(false);
   const getToken = () => localStorage.getItem('token');
 
-  const [billType, setBillType] = useState('Sale'); 
+  const [searchParams] = useSearchParams();
+  const editId = searchParams.get('editId');
 
+  const [billType, setBillType] = useState('Sale'); 
   const [khatas, setKhatas] = useState([]);
   const [partyOptions, setPartyOptions] = useState([]);
   const [cropsList, setCropsList] = useState([]);
-
   const [selectedClient, setSelectedClient] = useState(null);
   
-  // ✅ FIX: shopCategory aur clientCategory ko khali chhora hai taake validation pakar sake
-  const [billMeta, setBillMeta] = useState({
-    clientName: '', clientCategory: '', shopCategory: '', jins: '', date: new Date().toISOString().split('T')[0], bharti: '60'
-  });
-
+  const [billMeta, setBillMeta] = useState({ clientName: '', clientCategory: '', shopCategory: '', jins: '', date: new Date().toISOString().split('T')[0], bharti: '60' });
   const [entries, setEntries] = useState([{ id: 1, shopName: '', selectedShop: null, bharti: '60', weight: '', rate: '', damiPercent: '' }]);
-
-  const [expenses, setExpenses] = useState({
-    labourPerBag: '', freightRate: '', freightType: 'per_maund', commissionPercent: '', clientDamiPercent: '', marketFeeRate: '2' 
-  });
+  const [expenses, setExpenses] = useState({ labourPerBag: '', freightRate: '', freightType: 'per_maund', commissionPercent: '', clientDamiPercent: '', marketFeeRate: '2' });
   const [status, setStatus] = useState('');
 
   useEffect(() => {
-    fetch('/api/parcha/khatagroup/all', { headers: { 'auth-token': getToken() } }).then(res => res.json()).then(data => { if (Array.isArray(data)) setKhatas(data); }).catch(console.error);
-    fetch('/api/parcha/parties/all', { headers: { 'auth-token': getToken() } }).then(res => res.json()).then(data => { if (Array.isArray(data)) setPartyOptions(data.map(p => ({ value: p.name, label: `${p.khataIndex || 'N/A'} - ${p.name}`, partyType: p.partyType }))); }).catch(console.error);
-    fetch('/api/crops/all', { headers: { 'auth-token': getToken() } }).then(res => res.json()).then(data => { if (Array.isArray(data)) setCropsList(data); }).catch(console.error);
-  }, []);
+    fetch('/api/parcha/khatagroup/all', { headers: { 'auth-token': getToken() } }).then(res => res.json()).then(data => { if (Array.isArray(data)) setKhatas(data); });
+    fetch('/api/parcha/parties/all', { headers: { 'auth-token': getToken() } }).then(res => res.json()).then(data => { if (Array.isArray(data)) setPartyOptions(data.map(p => ({ value: p.name, label: `${p.khataIndex || 'N/A'} - ${p.name}`, partyType: p.partyType }))); });
+    fetch('/api/crops/all', { headers: { 'auth-token': getToken() } }).then(res => res.json()).then(data => { if (Array.isArray(data)) setCropsList(data); });
 
-  const handleClientChange = (newValue) => {
-    setSelectedClient(newValue);
-    setBillMeta(prev => ({ ...prev, clientName: newValue ? newValue.value : '', clientCategory: newValue?.partyType || prev.clientCategory }));
-  };
+    if (editId) {
+      fetch(`/api/trading/get-bill/${editId}`, { headers: { 'auth-token': getToken() } })
+        .then(res => { if(!res.ok) throw new Error("Bill nahi mila"); return res.json(); })
+        .then(data => {
+          setBillType(data.billType);
+          setBillMeta({
+            clientName: data.clientName || '', clientCategory: data.clientCategory || '', shopCategory: data.shopCategory || '', jins: data.jins || '',
+            date: data.date ? new Date(data.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            bharti: data.bharti || '60'
+          });
+          if(data.clientName) setSelectedClient({ value: data.clientName, label: data.clientName });
+          if(data.entries && data.entries.length > 0) {
+            setEntries(data.entries.map((e, idx) => ({ ...e, id: Date.now() + idx, selectedShop: e.shopName ? { value: e.shopName, label: e.shopName } : null })));
+          }
+          if(data.expenses) setExpenses(data.expenses);
+        })
+        .catch(err => console.log(err));
+    }
+  }, [editId]);
 
-  const handleShopChange = (index, newValue) => {
-    const updated = [...entries];
-    updated[index].shopName = newValue ? newValue.value : '';
-    updated[index].selectedShop = newValue;
-    setEntries(updated);
-  };
-
+  const handleClientChange = (newValue) => { setSelectedClient(newValue); setBillMeta(prev => ({ ...prev, clientName: newValue ? newValue.value : '', clientCategory: newValue?.partyType || prev.clientCategory })); };
+  const handleShopChange = (index, newValue) => { const updated = [...entries]; updated[index].shopName = newValue ? newValue.value : ''; updated[index].selectedShop = newValue; setEntries(updated); };
   const addRow = () => setEntries([...entries, { id: Date.now(), shopName: '', selectedShop: null, bharti: '60', weight: '', rate: '', damiPercent: '' }]);
   const removeRow = (id) => { if (entries.length > 1) setEntries(entries.filter(entry => entry.id !== id)); };
   const handleEntryChange = (id, field, value) => setEntries(entries.map(entry => entry.id === id ? { ...entry, [field]: value } : entry));
 
   const getMaundKilo = (totalKg) => {
     if (!totalKg || isNaN(totalKg)) return "0 من 0 کلو";
-    const maunds = Math.floor(totalKg / 40);
-    const kgs = (totalKg % 40).toFixed(2);
+    const maunds = Math.floor(totalKg / 40); const kgs = (totalKg % 40).toFixed(2);
     return `${maunds} من ${kgs.endsWith('.00') ? kgs.split('.')[0] : kgs} کلو`;
   };
 
-  // --- CALCULATIONS ---
   let totalWeight = 0; let totalBags = 0; let totalPurchaseCost = 0; let totalDamiAmount = 0;
-
   entries.forEach(e => {
-    const w = parseFloat(e.weight) || 0;
-    const r = parseFloat(e.rate) || 0;
-    const d = parseFloat(e.damiPercent) || 0;
+    const w = parseFloat(e.weight) || 0; const r = parseFloat(e.rate) || 0; const d = parseFloat(e.damiPercent) || 0;
     const b = billType === 'Purchase' ? (parseFloat(e.bharti) || 1) : (parseFloat(billMeta.bharti) || 1);
-    
-    const baseAmount = (w / 40) * r; 
-    const damiAmount = billType === 'Purchase' ? baseAmount * (d / 100) : 0; 
-    
-    totalWeight += w;
-    if(w > 0) totalBags += (w / b); 
-    totalPurchaseCost += baseAmount;
-    totalDamiAmount += damiAmount;
+    const baseAmount = (w / 40) * r; const damiAmount = billType === 'Purchase' ? baseAmount * (d / 100) : 0; 
+    totalWeight += w; if(w > 0) totalBags += (w / b); totalPurchaseCost += baseAmount; totalDamiAmount += damiAmount;
   });
 
   const totalLabour = billType === 'Sale' ? totalBags * (parseFloat(expenses.labourPerBag) || 0) : 0;
@@ -80,54 +72,51 @@ function TradingBill() {
   const totalCommission = billType === 'Sale' ? totalPurchaseCost * ((parseFloat(expenses.commissionPercent) || 0) / 100) : 0;
   const totalMarketFee = billType === 'Sale' ? (totalWeight / 100) * (parseFloat(expenses.marketFeeRate) || 0) : 0;
   const clientDamiAmount = billType === 'Sale' ? totalPurchaseCost * ((parseFloat(expenses.clientDamiPercent) || 0) / 100) : 0; 
-
-  const finalNetCost = billType === 'Purchase' 
-        ? totalPurchaseCost + totalDamiAmount 
-        : totalPurchaseCost + totalLabour + totalFreight + totalCommission + totalMarketFee + clientDamiAmount;
+  const finalNetCost = billType === 'Purchase' ? totalPurchaseCost + totalDamiAmount : totalPurchaseCost + totalLabour + totalFreight + totalCommission + totalMarketFee + clientDamiAmount;
         
-  // --- SUBMIT WITH STRICT VALIDATION ---
+  // 🚀 YAHAN MAINE SUB KUCH PERFECT SET KAR DIYA HAI
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // 🛑 1. STRICT FRONTEND VALIDATION
     if (billType === 'Sale') {
-      if (!billMeta.clientName) return setStatus('❌ Khareedar (Client) ka naam likhna zaroori hai!');
+      if (!billMeta.clientName) return setStatus('❌ Khareedar ka naam zaroori hai!');
       if (!billMeta.clientCategory) return setStatus('❌ Khareedar ka Khata Group select karein!');
     } else {
-      if (!billMeta.shopCategory) return setStatus('❌ Dukan ka Khata Group select karna zaroori hai!');
-      for (let i = 0; i < entries.length; i++) {
-        if (!entries[i].shopName) {
-          return setStatus(`❌ Entry No ${i + 1}: Dukan / Arhti ka naam likhna zaroori hai!`);
-        }
-      }
+      if (!billMeta.shopCategory) return setStatus('❌ Dukan ka Khata Group zaroori hai!');
+      for (let i = 0; i < entries.length; i++) { if (!entries[i].shopName) return setStatus(`❌ Entry ${i + 1}: Dukan ka naam zaroori hai!`); }
     }
-    if (!billMeta.jins) return setStatus('❌ Jins (Crop) select karna zaroori hai!');
-
-    setStatus('⏳ Saving Bill...');
-
-    const endpoint = billType === 'Purchase' ? '/api/trading/save-purchase' : '/api/trading/save-sale';
-
-    const billPayload = {
-      ...billMeta,
-      entries: entries.map(entry => {
-         const w = parseFloat(entry.weight) || 0; const r = parseFloat(entry.rate) || 0; const d = parseFloat(entry.damiPercent) || 0;
-         const base = (w / 40) * r;
-         return { ...entry, rowTotal: billType === 'Purchase' ? base + (base * (d / 100)) : base };
-      }),
-      expenses: billType === 'Sale' ? expenses : {},
-      totals: { totalWeight, totalBags, totalPurchaseCost, totalDamiAmount, clientDamiAmount, totalLabour, totalFreight, totalMarketFee, totalCommission, finalNetCost }
-    };
 
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'auth-token': getToken() },
-        body: JSON.stringify(billPayload)
+      setStatus(editId ? '⏳ Naya hissab update ho raha hai...' : '⏳ Saving Bill...');
+
+      // 1. Agar editId mojood hai, to seedha UPDATE route par bhejein (PUT method ke zariye)
+      const endpoint = editId 
+          ? `/api/trading/update/${editId}` 
+          : (billType === 'Purchase' ? '/api/trading/save-purchase' : '/api/trading/save-sale');
+          
+      const method = editId ? 'PUT' : 'POST';
+
+      const billPayload = {
+        ...billMeta,
+        entries: entries.map(entry => {
+           const w = parseFloat(entry.weight) || 0; const r = parseFloat(entry.rate) || 0; const d = parseFloat(entry.damiPercent) || 0;
+           const base = (w / 40) * r; return { ...entry, rowTotal: billType === 'Purchase' ? base + (base * (d / 100)) : base };
+        }),
+        expenses: billType === 'Sale' ? expenses : {},
+        totals: { totalWeight, totalBags, totalPurchaseCost, totalDamiAmount, clientDamiAmount, totalLabour, totalFreight, totalMarketFee, totalCommission, finalNetCost },
+        billType: billType 
+      };
+
+      const response = await fetch(endpoint, { 
+        method: method, 
+        headers: { 'Content-Type': 'application/json', 'auth-token': getToken() }, 
+        body: JSON.stringify(billPayload) 
       });
+      
       const data = await response.json();
       if (data.success) {
-        setStatus(`✅ Trading ${billType} Bill Saved!`);
+        setStatus(editId ? `✅ Trading ${billType} Bill Updated!` : `✅ Trading ${billType} Bill Saved!`);
         if (shouldPrint.current) { setTimeout(() => window.print(), 300); shouldPrint.current = false; }
+        setTimeout(() => { if (editId) navigate('/parta-history'); else window.location.reload(); }, 2000);
       } else setStatus("❌ Error: " + data.message);
     } catch (error) { setStatus("❌ Network Error."); }
   };
@@ -144,16 +133,15 @@ function TradingBill() {
         <div className="screen-only">
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #000080', paddingBottom: '10px', marginBottom: '20px' }}>
-            <h2 style={{ color: '#000080', margin: 0 }}>📋 Trading Bill (بیوپار)</h2>
+            <h2 style={{ color: '#000080', margin: 0 }}>{editId ? `✏️ Trading Bill (Update ${billType})` : '📋 Trading Bill (بیوپار)'}</h2>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="button" onClick={() => setBillType('Purchase')} style={{ padding: '10px 20px', fontSize: '18px', fontWeight: 'bold', borderRadius: '5px', border: 'none', cursor: 'pointer', backgroundColor: billType === 'Purchase' ? '#0d6efd' : '#e9ecef', color: billType === 'Purchase' ? 'white' : 'black' }}>🛒 مال خریدیں (Purchase)</button>
-              <button type="button" onClick={() => setBillType('Sale')} style={{ padding: '10px 20px', fontSize: '18px', fontWeight: 'bold', borderRadius: '5px', border: 'none', cursor: 'pointer', backgroundColor: billType === 'Sale' ? '#198754' : '#e9ecef', color: billType === 'Sale' ? 'white' : 'black' }}>📦 مال بیچیں (Sale)</button>
+              <button type="button" onClick={() => setBillType('Purchase')} disabled={editId} style={{ padding: '10px 20px', fontSize: '18px', fontWeight: 'bold', borderRadius: '5px', border: 'none', cursor: editId ? 'not-allowed' : 'pointer', backgroundColor: billType === 'Purchase' ? '#0d6efd' : '#e9ecef', color: billType === 'Purchase' ? 'white' : 'black' }}>🛒 مال خریدیں (Purchase)</button>
+              <button type="button" onClick={() => setBillType('Sale')} disabled={editId} style={{ padding: '10px 20px', fontSize: '18px', fontWeight: 'bold', borderRadius: '5px', border: 'none', cursor: editId ? 'not-allowed' : 'pointer', backgroundColor: billType === 'Sale' ? '#198754' : '#e9ecef', color: billType === 'Sale' ? 'white' : 'black' }}>📦 مال بیچیں (Sale)</button>
             </div>
           </div>
           
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
             
-            {/* ✅ SALE MODE: Client Khata Group */}
             {billType === 'Sale' && (
               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', backgroundColor: '#e2f0d9', padding: '15px', borderRadius: '5px' }}>
                 <div style={{ flex: 2, minWidth: '250px' }}><label><b>Client Name (خریدار کا نام):</b></label><CreatableSelect options={partyOptions} value={selectedClient} onChange={handleClientChange} styles={selectStyles} isClearable /></div>
@@ -161,7 +149,6 @@ function TradingBill() {
               </div>
             )}
 
-            {/* ✅ PURCHASE MODE: Shop Khata Group */}
             {billType === 'Purchase' && (
               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', backgroundColor: '#e8f4fd', padding: '15px', borderRadius: '5px' }}>
                 <div style={{ flex: 1, minWidth: '150px' }}>
@@ -243,9 +230,13 @@ function TradingBill() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2 style={{ margin: 0, color: '#fff' }}>کل رقم (Total):</h2><h2 style={{ margin: 0, color: '#10b981' }} dir="ltr">Rs {formatRs(finalNetCost)}</h2></div>
             </div>
 
-            <div style={{ display: 'flex', gap: '15px' }}>
-              <button type="submit" onClick={() => { shouldPrint.current = true; }} style={{ flex: 1, padding: '15px', backgroundColor: '#198754', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold' }}>💾 Save & Print 🖨️</button>
-              <button type="submit" onClick={() => { shouldPrint.current = false; }} style={{ flex: 1, padding: '15px', backgroundColor: '#000080', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold' }}>💾 Sirf Save Karein</button>
+            <div style={{ display: 'flex', gap: '15px', marginTop: '10px' }}>
+              <button type="submit" onClick={() => { shouldPrint.current = true; }} style={{ flex: 1, padding: '15px', backgroundColor: '#198754', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold' }}>
+                {editId ? '💾 Update & Print 🖨️' : '💾 Save & Print 🖨️'}
+              </button>
+              <button type="submit" onClick={() => { shouldPrint.current = false; }} style={{ flex: 1, padding: '15px', backgroundColor: '#000080', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold' }}>
+                {editId ? '💾 Sirf Update Karein' : '💾 Sirf Save Karein'}
+              </button>
             </div>
             {status && <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '18px', color: status.includes('❌') ? 'red' : 'green' }}>{status}</p>}
           </form>

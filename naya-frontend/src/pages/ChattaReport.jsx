@@ -1,68 +1,112 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 function ChattaReport() {
-  const [auditData, setAuditData] = useState([]);
-  const [summary, setSummary] = useState({ totalParties: 0, totalMismatches: 0 });
-  const [dates, setDates] = useState({ from: '', to: '' });
-  const [loading, setLoading] = useState(false);
+  const [parties, setParties] = useState([]);
+  const [inventory, setInventory] = useState([]); 
+  const [loading, setLoading] = useState(true);
   
-  // ✅ FIX: Text search ki jagah Dropdown State
-  const [selectedParty, setSelectedParty] = useState('All');
+  // 📅 Date Filter States
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
-  const navigate = useNavigate();
   const getToken = () => localStorage.getItem('token');
 
-  const fetchAudit = async () => {
+  const fetchAuditData = () => {
     setLoading(true);
-    try {
-      let url = '/api/reports/full-audit';
-      if (dates.from && dates.to) {
-        url += `?from=${dates.from}&to=${dates.to}`;
-      }
-      const res = await fetch(url, { headers: { 'auth-token': getToken() } });
-      const data = await res.json();
-      
-      if (data.success) {
-        setAuditData(data.report);
-        setSummary({ totalParties: data.totalParties, totalMismatches: data.totalMismatches });
-      } else {
-        alert('Error: ' + data.error);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+    let queryParams = '';
+    if (fromDate && toDate) {
+        queryParams = `?from=${fromDate}&to=${toDate}`;
     }
+
+    Promise.all([
+      fetch(`/api/parcha/parties/all${queryParams}`, { headers: { 'auth-token': getToken() } }).then(res => res.json()),
+      fetch(`/api/inventory/all${queryParams}`, { headers: { 'auth-token': getToken() } }).then(res => res.json())
+    ])
+      .then(([partiesData, inventoryData]) => {
+        if (Array.isArray(partiesData)) setParties(partiesData);
+        if (Array.isArray(inventoryData)) setInventory(inventoryData);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
-    fetchAudit(); 
+    fetchAuditData();
   }, []);
 
-  // Dropdown ke liye unique parties nikali hain
-  const uniqueParties = [...new Set(auditData.map(item => item.partyName))].sort();
+  const handleFilter = () => {
+      fetchAuditData();
+  };
 
-  // Filter Data (Dropdown ke hisaab se)
-  const filteredData = auditData.filter(row => {
-    if (selectedParty === 'All') return true;
-    return row.partyName === selectedParty;
-  });
+  const clearFilter = () => {
+      setFromDate('');
+      setToDate('');
+      setTimeout(() => fetchAuditData(), 100);
+  };
 
-  const inputStyle = { padding: '10px', borderRadius: '5px', border: '1px solid #ccc' };
-  const thStyle = { padding: '12px', borderBottom: '2px solid #ddd', backgroundColor: '#000080', color: 'white' };
-  const tdStyle = { padding: '12px', borderBottom: '1px solid #ddd' };
+  const validParties = parties.filter(p => 
+      p.name !== 'Main Purchase Khata' && p.name !== 'Main Sales Khata'
+  );
+
+  const naamParties = validParties.filter(p => p.balanceType === 'Naam' && p.currentBalance > 0);
+  const jamaParties = validParties.filter(p => p.balanceType === 'Jama' && p.currentBalance > 0);
+
+  const baseJamaTotal = jamaParties.reduce((sum, p) => sum + p.currentBalance, 0);
+  const baseNaamTotal = naamParties.reduce((sum, p) => sum + p.currentBalance, 0);
+
+  const totalStockValue = inventory.reduce((totalVal, crop) => {
+    if (!crop.lots || crop.lots.length === 0) return totalVal;
+    const cropValue = crop.lots.reduce((sum, lot) => sum + ((Number(lot.weight) / 40) * Number(lot.rate)), 0);
+    return totalVal + cropValue;
+  }, 0);
+
+  let displayNaam = [...naamParties];
+  let displayJama = [...jamaParties];
+
+  // 🌾 Godam Ka Maal (Asset)
+  if (totalStockValue > 0) {
+      displayNaam.push({
+          name: '🌾 گودام کا مال (Unsold Stock)',
+          partyType: 'Asset (اثاثہ)',
+          currentBalance: totalStockValue,
+          isStock: true
+      });
+  }
+
+  // 💰 Cash in Hand (Rokar) - Iske baghair Trial Balance barabar nahi ho sakta
+  const difference = baseJamaTotal - (baseNaamTotal + totalStockValue);
+
+  if (difference > 0) {
+      displayNaam.push({
+          name: '💰 گلے کی روکڑ (Cash in Hand)',
+          partyType: 'Cash Asset',
+          currentBalance: difference,
+          isRokar: true
+      });
+  } else if (difference < 0) {
+      displayJama.push({
+          name: '⚠️ گلے میں کمی (Cash Shortage)',
+          partyType: 'Liability',
+          currentBalance: Math.abs(difference),
+          isRokar: true
+      });
+  }
+
+  // Ab Dono Sides Ka Grand Total 100% Barabar Hoga
+  const grandTotal = Math.max(baseJamaTotal, baseNaamTotal + totalStockValue);
 
   const formatRs = (num) => Number(num || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-  // Print Date Range
-  const printDateRange = (dates.from && dates.to) 
-      ? `${new Date(dates.from).toLocaleDateString('en-GB')} se ${new Date(dates.to).toLocaleDateString('en-GB')}`
-      : 'شروع سے آج تک (All Time)';
+  const thStyle = { padding: '12px', borderBottom: '2px solid #ddd', backgroundColor: '#000080', color: 'white', textAlign: 'left' };
+  const tdStyle = { padding: '10px', borderBottom: '1px solid #ddd', fontSize: '16px' };
+  const highlightStyle = { backgroundColor: '#eef8f5', fontWeight: 'bold', borderTop: '2px solid #555' };
+  const rokarStyle = { backgroundColor: '#fff3cd', fontWeight: 'bold', color: '#856404', borderTop: '2px solid #000' };
 
   return (
     <>
-      {/* ✅ FIX: PRINT CSS ADD KIYA GAYA HAI */}
       <style>{`
         @media screen { .print-only { display: none !important; } }
         @media print {
@@ -70,201 +114,129 @@ function ChattaReport() {
           .print-only, .print-only * { visibility: visible; }
           .print-only { position: absolute; left: 0; top: 0; width: 100%; padding: 10px; }
           .screen-only { display: none !important; }
-          .table-bordered th, .table-bordered td { border: 1px solid #000 !important; }
         }
       `}</style>
       
       <div className="screen-only" style={{ padding: '30px', fontFamily: 'Arial, sans-serif' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #000080', paddingBottom: '10px', marginBottom: '20px' }}>
-          <h2 style={{ color: '#000080', margin: 0 }}>⚖️ چھٹا رپورٹ (Master Audit & Reconciliation)</h2>
-          <button onClick={() => window.print()} style={{ padding: '10px 20px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-            🖨️ Print Audit
+          <h2 style={{ color: '#000080', margin: 0 }}>⚖️ چھٹہ / فنانشل میزان (Trial Balance)</h2>
+          <button onClick={() => window.print()} style={{ padding: '10px 20px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}>
+            🖨️ Print Chatta
           </button>
         </div>
 
-        {/* DASHBOARD CARDS */}
-        <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, backgroundColor: '#e8f4fd', padding: '20px', borderRadius: '8px', borderLeft: '5px solid #0d6efd' }}>
-            <h4 style={{ margin: 0, color: '#555' }}>کل پارٹیاں (Total Accounts)</h4>
-            <h2 style={{ margin: '10px 0 0 0', color: '#0d6efd' }}>{summary.totalParties}</h2>
-          </div>
-          <div style={{ flex: 1, backgroundColor: '#d1e7dd', padding: '20px', borderRadius: '8px', borderLeft: '5px solid #198754' }}>
-            <h4 style={{ margin: 0, color: '#555' }}>درست کھاتے (100% OK)</h4>
-            <h2 style={{ margin: '10px 0 0 0', color: '#198754' }}>{summary.totalParties - summary.totalMismatches}</h2>
-          </div>
-          <div style={{ flex: 1, backgroundColor: '#f8d7da', padding: '20px', borderRadius: '8px', borderLeft: '5px solid #dc3545' }}>
-            <h4 style={{ margin: 0, color: '#555' }}>فرق والے کھاتے (Mismatches)</h4>
-            <h2 style={{ margin: '10px 0 0 0', color: '#dc3545' }}>{summary.totalMismatches}</h2>
-          </div>
+        {/* 📅 DATE FILTER SECTION */}
+        <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', alignItems: 'flex-end' }}>
+            <div>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>From Date:</label>
+                <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+            <div>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>To Date:</label>
+                <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+            <button onClick={handleFilter} style={{ padding: '9px 20px', backgroundColor: '#000080', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                🔍 Filter
+            </button>
+            <button onClick={clearFilter} style={{ padding: '9px 20px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                ✖ Clear
+            </button>
         </div>
 
-        {/* FILTERS */}
-        <div style={{ display: 'flex', gap: '15px', backgroundColor: 'white', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <label style={{ fontWeight: 'bold' }}>Kab Se:</label>
-            <input type="date" value={dates.from} onChange={(e) => setDates({...dates, from: e.target.value})} style={inputStyle} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <label style={{ fontWeight: 'bold' }}>Kab Tak:</label>
-            <input type="date" value={dates.to} onChange={(e) => setDates({...dates, to: e.target.value})} style={inputStyle} />
-          </div>
-          <button onClick={fetchAudit} style={{ padding: '10px 20px', backgroundColor: '#000080', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-            🔄 Audit Run Karein
-          </button>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
           
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <label style={{ fontWeight: 'bold', color: '#555' }}>🔍 Party Select:</label>
-            {/* ✅ FIX: Dropdown add kar diya gaya hai */}
-            <select 
-              value={selectedParty} 
-              onChange={(e) => setSelectedParty(e.target.value)} 
-              style={{...inputStyle, width: '250px', backgroundColor: '#f8f9fa', fontWeight: 'bold'}}
-            >
-              <option value="All">-- Sab Parties (All) --</option>
-              {uniqueParties.map((p, i) => <option key={i} value={p}>{p}</option>)}
-            </select>
-          </div>
-        </div>
-
-        {/* AUDIT TABLE */}
-        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Khata #</th>
-                <th style={thStyle}>Party Name</th>
-                <th style={thStyle}>Category</th>
-                <th style={thStyle}>Ledger (Asli Hissab)</th>
-                <th style={thStyle}>System (Saved Hissab)</th>
-                <th style={thStyle}>Difference (فرق)</th>
-                <th style={thStyle}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan="7" style={{ padding: '20px', textAlign: 'center', fontWeight: 'bold' }}>⏳ Audit ho raha hai...</td></tr>
-              ) : filteredData.length === 0 ? (
-                <tr><td colSpan="7" style={{ padding: '20px', textAlign: 'center', fontWeight: 'bold' }}>Koi data nahi mila.</td></tr>
-              ) : (
-                filteredData.map((row, index) => {
-                  
-                  // Ledger Format
-                  const ledgerText = row.ledgerBalance > 0 ? `+ Rs ${formatRs(row.ledgerBalance)} (Jama)` : (row.ledgerBalance < 0 ? `- Rs ${formatRs(Math.abs(row.ledgerBalance))} (Naam)` : '0 (Clear)');
-                  const ledgerColor = row.ledgerBalance > 0 ? '#198754' : (row.ledgerBalance < 0 ? '#dc3545' : '#6c757d');
-
-                  // System Format
-                  const systemText = row.systemSavedBalance > 0 ? `+ Rs ${formatRs(row.systemSavedBalance)} (Jama)` : (row.systemSavedBalance < 0 ? `- Rs ${formatRs(Math.abs(row.systemSavedBalance))} (Naam)` : '0 (Clear)');
-                  const systemColor = row.systemSavedBalance > 0 ? '#198754' : (row.systemSavedBalance < 0 ? '#dc3545' : '#6c757d');
-
-                  return (
-                    <tr key={index} style={{ backgroundColor: row.isMatch ? '#fff' : '#fff3cd' }}>
-                      <td style={tdStyle}><b>{row.khataIndex}</b></td>
-                      <td style={{...tdStyle, fontWeight: 'bold'}}>{row.partyName}</td>
-                      <td style={tdStyle}>{row.partyType}</td>
-                      <td style={{...tdStyle, color: ledgerColor, fontWeight: 'bold'}}>{ledgerText}</td>
-                      <td style={{...tdStyle, color: systemColor, fontWeight: 'bold'}}>{systemText}</td>
-                      <td style={{
-                        ...tdStyle, 
-                        color: row.isMatch ? '#198754' : '#dc3545', 
-                        fontWeight: 'bold', 
-                        fontSize: '16px'
-                      }}>
-                        {row.isMatch ? '0' : `Rs ${formatRs(row.difference)}`}
-                      </td>
-                      <td style={tdStyle}>
-                        {row.isMatch ? (
-                          <span style={{ backgroundColor: '#198754', color: 'white', padding: '5px 10px', borderRadius: '15px', fontSize: '12px' }}>✅ OK</span>
-                        ) : (
-                          <button onClick={() => navigate('/pakka-khata')} style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>⚠️ Ledger Dekhein</button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ==================== PRINT ONLY LAYOUT ==================== */}
-      <div className="print-only urdu-text" dir="rtl" style={{ backgroundColor: 'white', color: '#000' }}>
-        <div className="d-flex justify-content-between align-items-center border-bottom border-dark pb-2 mb-2">
-          <div style={{ width: '40%' }}>
-            <h2 className="mb-0 fw-bold" style={{ color: '#000080' }}>میاں علی محمد اینڈ سنز</h2>
-            <p className="mb-0 fw-bold">دوکان نمبر 74/G غلہ منڈی بورے والا</p>
-          </div>
-          <div className="text-center" style={{ width: '20%' }}>
-            <span style={{ fontSize: '24px', fontWeight: 'bold', border: '2px solid black', padding: '5px 15px', borderRadius: '10px' }}>
-              چھٹا رپورٹ
-            </span>
-          </div>
-          <div dir="ltr" style={{ width: '40%', textAlign: 'left' }}>
-            <h4 className="mb-0 fw-bold" style={{ color: '#000080', fontFamily: 'Arial' }}>Mian Ali Muhammad & Sons</h4>
-            <p className="mb-0 fw-bold" style={{ fontFamily: 'Arial' }}>74/G, Grain Market Burewala</p>
-          </div>
-        </div>
-
-        <div className="d-flex justify-content-between border-bottom border-dark pb-2 mb-3 fs-6">
-          <div dir="ltr" style={{ fontFamily: 'Arial' }}>
-            <span className="urdu-text fw-bold me-2">میاں عبدالستار کلیم: </span><b>0336-7202647 / 0309-7032647</b>
-          </div>
-          <div dir="ltr" style={{ fontFamily: 'Arial' }}>
-            <span className="urdu-text fw-bold me-2">تاریخ (Date): </span><b style={{ color: '#dc3545' }}>{printDateRange}</b>
-          </div>
-        </div>
-
-        <h3 className="text-center fw-bold mt-2 mb-3" style={{ color: '#000080', textDecoration: 'underline' }}>
-          آڈٹ اور چھٹا رپورٹ (Audit & Reconciliation)
-        </h3>
-
-        <table className="table table-bordered border-dark border-2 text-center align-middle mb-4">
-          <thead style={{ backgroundColor: '#f8f9fa' }}>
-            <tr className="fs-5">
-              <th className="border-dark">نمبر (Sr)</th>
-              <th className="border-dark">پارٹی کا نام</th>
-              <th className="border-dark">کیٹیگری</th>
-              <th className="border-dark">لیجر (Asli Hissab)</th>
-              <th className="border-dark">سسٹم (Saved Hissab)</th>
-              <th className="border-dark">فرق (Difference)</th>
-            </tr>
-          </thead>
-          <tbody style={{ fontFamily: 'Arial', fontSize: '17px' }}>
-            {filteredData.length === 0 ? (
-              <tr><td colSpan="6" className="p-3">کوئی ڈیٹا نہیں ملا۔</td></tr>
-            ) : (
-              filteredData.map((row, index) => {
-                // Formatting values for print
-                const ledgerText = row.ledgerBalance > 0 ? `+ Rs ${formatRs(row.ledgerBalance)}` : (row.ledgerBalance < 0 ? `- Rs ${formatRs(Math.abs(row.ledgerBalance))}` : '0');
-                const ledgerColor = row.ledgerBalance > 0 ? '#198754' : (row.ledgerBalance < 0 ? '#dc3545' : '#000');
-                
-                const systemText = row.systemSavedBalance > 0 ? `+ Rs ${formatRs(row.systemSavedBalance)}` : (row.systemSavedBalance < 0 ? `- Rs ${formatRs(Math.abs(row.systemSavedBalance))}` : '0');
-                const systemColor = row.systemSavedBalance > 0 ? '#198754' : (row.systemSavedBalance < 0 ? '#dc3545' : '#000');
-
-                return (
-                  <tr key={index}>
-                    <td className="border-dark">{index + 1}</td>
-                    <td className="border-dark urdu-text fw-bold">{row.partyName}</td>
-                    <td className="border-dark">{row.partyType}</td>
-                    <td className="border-dark fw-bold" dir="ltr" style={{ color: ledgerColor }}>{ledgerText}</td>
-                    <td className="border-dark fw-bold" dir="ltr" style={{ color: systemColor }}>{systemText}</td>
-                    <td className="border-dark fw-bold" dir="ltr" style={{ color: row.isMatch ? '#198754' : '#dc3545', fontSize: '18px' }}>
-                      {row.isMatch ? 'OK (0)' : `Rs ${formatRs(row.difference)}`}
-                    </td>
+          {/* LEFT SIDE: JAMA KHATAY */}
+          <div style={{ flex: 1, backgroundColor: 'white', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ color: '#198754', borderBottom: '2px solid #198754', paddingBottom: '10px', marginTop: 0 }}>جمع کھاتے (Total Credits)</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{...thStyle, backgroundColor: '#198754'}}>Party / Khata</th>
+                  <th style={{...thStyle, backgroundColor: '#198754'}}>Category</th>
+                  <th style={{...thStyle, backgroundColor: '#198754', textAlign: 'right'}}>Amount (Rs)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? <tr><td colSpan="3" style={tdStyle}>Loading...</td></tr> : displayJama.map((p, i) => (
+                  <tr key={i} style={p.isRokar ? rokarStyle : {}}>
+                    <td style={{...tdStyle, fontWeight: 'bold', color: p.isRokar ? '#856404' : '#333'}}>{p.name}</td>
+                    <td style={tdStyle}>{p.partyType}</td>
+                    <td style={{...tdStyle, color: p.isRokar ? '#856404' : '#198754', fontWeight: 'bold', textAlign: 'right'}} dir="ltr">{formatRs(p.currentBalance)}</td>
                   </tr>
-                )
-              })
-            )}
-          </tbody>
-        </table>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan="2" style={{ padding: '15px 10px', fontWeight: 'bold', fontSize: '20px', borderTop: '3px solid #000' }}>TOTAL JAMA:</td>
+                  <td style={{ padding: '15px 10px', fontWeight: 'bold', fontSize: '20px', color: '#198754', textAlign: 'right', borderTop: '3px solid #000' }} dir="ltr">Rs {formatRs(grandTotal)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
-        <div className="d-flex justify-content-around mt-4 fw-bold fs-5 border border-dark p-3 bg-light">
-          <div style={{ color: '#000080' }}>کل پارٹیاں: <span dir="ltr">{summary.totalParties}</span></div>
-          <div style={{ color: '#198754' }}>درست کھاتے: <span dir="ltr">{summary.totalParties - summary.totalMismatches}</span></div>
-          <div style={{ color: '#dc3545' }}>فرق والے کھاتے: <span dir="ltr">{summary.totalMismatches}</span></div>
+          {/* RIGHT SIDE: NAAM KHATAY */}
+          <div style={{ flex: 1, backgroundColor: 'white', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ color: '#dc3545', borderBottom: '2px solid #dc3545', paddingBottom: '10px', marginTop: 0 }}>بنام کھاتے (Total Debits)</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{...thStyle, backgroundColor: '#dc3545'}}>Party / Khata</th>
+                  <th style={{...thStyle, backgroundColor: '#dc3545'}}>Category</th>
+                  <th style={{...thStyle, backgroundColor: '#dc3545', textAlign: 'right'}}>Amount (Rs)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? <tr><td colSpan="3" style={tdStyle}>Loading...</td></tr> : displayNaam.map((p, i) => (
+                  <tr key={i} style={p.isStock ? highlightStyle : (p.isRokar ? rokarStyle : {})}>
+                    <td style={{...tdStyle, fontWeight: 'bold', color: p.isStock ? '#000' : (p.isRokar ? '#856404' : '#333')}}>{p.name}</td>
+                    <td style={tdStyle}>{p.partyType}</td>
+                    <td style={{...tdStyle, color: p.isRokar ? '#856404' : '#dc3545', fontWeight: 'bold', textAlign: 'right'}} dir="ltr">{formatRs(p.currentBalance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan="2" style={{ padding: '15px 10px', fontWeight: 'bold', fontSize: '20px', borderTop: '3px solid #000' }}>TOTAL NAAM:</td>
+                  <td style={{ padding: '15px 10px', fontWeight: 'bold', fontSize: '20px', color: '#dc3545', textAlign: 'right', borderTop: '3px solid #000' }} dir="ltr">Rs {formatRs(grandTotal)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       </div>
 
+      {/* PRINT VIEW */}
+      <div className="print-only urdu-text" dir="rtl" style={{ backgroundColor: 'white', color: '#000' }}>
+         <div className="d-flex justify-content-between align-items-center border-bottom border-dark pb-2 mb-4">
+            <div><h2 className="mb-0 fw-bold">میاں علی محمد اینڈ سنز</h2><p className="mb-0 fw-bold">دوکان نمبر 74/G غلہ منڈی بورے والا</p></div>
+            <div className="text-center">
+                <span style={{ fontSize: '26px', fontWeight:'bold', border:'2px solid black', padding:'5px 15px', borderRadius:'10px' }}>چھٹہ / میزان</span>
+                {fromDate && toDate && <div style={{ fontSize: '14px', marginTop: '10px' }}>تاریخ: {fromDate} سے {toDate}</div>}
+            </div>
+        </div>
+        <div style={{ display: 'flex', gap: '20px', marginTop: '10px' }}>
+            <div style={{ flex: 1 }}>
+                <h4 style={{ borderBottom: '2px solid #000', paddingBottom: '5px' }}>جمع کھاتے (Credits)</h4>
+                <table className="table table-bordered border-dark text-center">
+                    <thead><tr><th>پارٹی</th><th>رقم</th></tr></thead>
+                    <tbody>
+                        {displayJama.map((p,i) => <tr key={i} style={(p.isRokar) ? {backgroundColor: '#fff3cd'} : {}}><td className="fw-bold">{p.name}</td><td dir="ltr">{formatRs(p.currentBalance)}</td></tr>)}
+                        <tr><td className="fw-bold fs-5">کل جمع:</td><td className="fw-bold fs-5" dir="ltr">{formatRs(grandTotal)}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div style={{ flex: 1 }}>
+                <h4 style={{ borderBottom: '2px solid #000', paddingBottom: '5px' }}>بنام کھاتے (Debits)</h4>
+                <table className="table table-bordered border-dark text-center">
+                    <thead><tr><th>پارٹی</th><th>رقم</th></tr></thead>
+                    <tbody>
+                        {displayNaam.map((p,i) => <tr key={i} style={p.isStock ? {backgroundColor: '#eef8f5'} : (p.isRokar ? {backgroundColor: '#fff3cd'} : {})}><td className="fw-bold">{p.name}</td><td dir="ltr">{formatRs(p.currentBalance)}</td></tr>)}
+                        <tr><td className="fw-bold fs-5">کل بنام:</td><td className="fw-bold fs-5" dir="ltr">{formatRs(grandTotal)}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      </div>
     </>
   );
 }

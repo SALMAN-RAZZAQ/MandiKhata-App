@@ -8,7 +8,6 @@ function PartaHistory() {
   const [searchName, setSearchName] = useState('');
   const [loading, setLoading] = useState(false);
   
-  // ✅ PRINT STATE
   const [selectedBill, setSelectedBill] = useState(null);
   const [printType, setPrintType] = useState(''); 
 
@@ -53,7 +52,7 @@ function PartaHistory() {
   }, []);
 
   const handleDelete = async (id, type) => {
-    const isConfirm = window.confirm(`⚠️ Kya aap waqai yeh ${type} Bill delete karna chahte hain?`);
+    const isConfirm = window.confirm(`⚠️ WARNING: Kya aap waqai yeh ${type} Bill delete karna chahte hain? Is se juray tamam khatay (Comm, Dami, Ledger) reverse ho jayenge!`);
     if (isConfirm) {
       try {
         const url = type === 'Parta' ? `/api/parta/delete/${id}` : `/api/trading/delete/${id}`;
@@ -62,7 +61,7 @@ function PartaHistory() {
           headers: { 'auth-token': getToken() }
         });
         if (response.ok) {
-          alert("✅ Bill kamyabi se delete ho gaya!");
+          alert("✅ Bill aur uska hisaab kamyabi se Reverse ho gaya!");
           fetchBills(); 
         } else {
           alert("❌ Delete karne mein masla aaya.");
@@ -76,9 +75,7 @@ function PartaHistory() {
   const handlePrint = (bill) => {
     setSelectedBill(bill);
     setPrintType(bill.type);
-    setTimeout(() => {
-      window.print();
-    }, 200);
+    setTimeout(() => { window.print(); }, 200);
   };
 
   const formatRs = (num) => Number(num || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -160,13 +157,14 @@ function PartaHistory() {
                     if (bill.billType === 'Purchase') {
                       billNo = `TRD-PUR-${bill._id.slice(-5).toUpperCase()}`;
                       cName = bill.entries?.map(e => e.shopName).filter(Boolean).join(', ') || '---';
-                      kCat = bill.shopCategory || '---'; // ✅ FIX: Purchase Khata Category
+                      const uniqueCats = [...new Set(bill.entries?.map(e => e.khataCategory).filter(Boolean))];
+                      kCat = uniqueCats.length > 0 ? uniqueCats.join(', ') : '---';
                       badgeText = 'Trading (Purchase)';
-                      badgeColor = '#b45309';
+                      badgeColor = '#b45309'; 
                     } else {
                       billNo = `TRD-SAL-${bill._id.slice(-5).toUpperCase()}`;
                       cName = bill.clientName;
-                      kCat = bill.clientCategory || '---'; // ✅ FIX: Sale Khata Category
+                      kCat = bill.clientCategory;
                       badgeText = 'Trading (Sale)';
                       badgeColor = '#198754'; 
                     }
@@ -181,16 +179,27 @@ function PartaHistory() {
                       <td style={{ ...tdStyle, fontWeight: 'bold', color: badgeColor }}>{badgeText}</td>
                       <td style={{ ...tdStyle, color: '#000080', fontWeight: 'bold' }}>{billNo}</td>
                       <td style={{ ...tdStyle, fontWeight: 'bold' }}>{cName}</td>
-                      <td style={tdStyle}>{kCat}</td>
+                      <td style={tdStyle}>{kCat || '---'}</td>
                       <td style={tdStyle}>{iCount} Items</td>
-                      <td style={{ ...tdStyle, color: '#198754', fontWeight: 'bold', fontSize: '16px' }}>
-                        Rs. {formatRs(netAmt)}
-                      </td>
-                      <td style={{ ...tdStyle, display: 'flex', gap: '10px' }}>
+                      <td style={{ ...tdStyle, color: '#198754', fontWeight: 'bold', fontSize: '16px' }}>Rs. {formatRs(netAmt)}</td>
+                      <td style={{ ...tdStyle, display: 'flex', gap: '8px' }}>
+                        
                         <button onClick={() => handlePrint(bill)} style={{ padding: '6px 12px', backgroundColor: '#0dcaf0', color: 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>🖨️ Print</button>
+                        
+                        {/* 🔥 NAYA FIX: Edit Button (Only for Admin) */}
                         {userRole === 'Admin' && (
-                          <button onClick={() => handleDelete(bill._id, bill.type)} style={{ padding: '6px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>🗑️ Delete</button>
+                          <>
+                            <button 
+                              onClick={() => navigate(`/${isParta ? 'parta-bill' : 'trading-bill'}?editId=${bill._id}`)} 
+                              style={{ padding: '6px 12px', backgroundColor: '#ffc107', color: 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                            >
+                              ✏️ Edit
+                            </button>
+
+                            <button onClick={() => handleDelete(bill._id, bill.type)} style={{ padding: '6px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>🗑️ Delete</button>
+                          </>
                         )}
+
                       </td>
                     </tr>
                   )
@@ -201,7 +210,6 @@ function PartaHistory() {
         </div>
       </div>
 
-      {/* PRINT AREA */}
       {selectedBill && (
         <div className="print-only urdu-text" dir="rtl" style={{ backgroundColor: 'white', color: '#000' }}>
           
@@ -269,7 +277,9 @@ function PartaHistory() {
                   </tr>
                   <tr style={{ backgroundColor: '#f0fff0' }}>
                     <td colSpan="3" className="text-start urdu-text fs-4 fw-bold border-dark">نیٹ صافی رقم:</td>
-                    <td className="fs-4 fw-bold border-dark" dir="ltr" style={{ color: '#198754' }}>{formatRs(selectedBill.netAmount)}</td>
+                    <td className="fs-4 fw-bold border-dark" dir="ltr" style={{ color: '#198754' }}>
+                      {formatRs(selectedBill.netAmount)}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -278,7 +288,7 @@ function PartaHistory() {
             <>
               <div className="d-flex justify-content-between mb-3 fs-5">
                 {selectedBill.billType === 'Purchase' ? (
-                   <div><b>اسٹاک انٹری (خریداری)</b> - کیٹیگری: <u style={{ fontFamily: 'Arial' }}>{selectedBill.shopCategory || '---'}</u></div>
+                   <div><b>اسٹاک انٹری (خریداری)</b></div>
                 ) : (
                    <div><b>خریدار (Client):</b> <u style={{ fontFamily: 'Arial', marginRight: '10px' }}>{selectedBill.clientName} ({selectedBill.clientCategory || '---'})</u></div>
                 )}
